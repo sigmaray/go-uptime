@@ -1,4 +1,4 @@
-// Package cmd определяет CLI-команды приложения на базе Cobra.
+// Package cmd defines application CLI commands built on Cobra.
 package cmd
 
 import (
@@ -29,13 +29,13 @@ var (
 	}
 )
 
-// Init настраивает CLI с встроенными миграциями. Конигурация загружается лениво при выполнении команд.
+// Init configures the CLI with embedded migrations. Configuration is loaded lazily when commands run.
 func Init(mig embed.FS) {
 	migrations = mig
 	registerCommands()
 }
 
-// ensureConfig загружает конфигурацию из окружения при первом обращении.
+// ensureConfig loads configuration from the environment on first access.
 func ensureConfig() *config.Config {
 	if cfg != nil {
 		return cfg
@@ -48,7 +48,7 @@ func ensureConfig() *config.Config {
 	return cfg
 }
 
-// Execute запускает CLI.
+// Execute runs the CLI.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ClearTable очищает указанную таблицу после подтверждения.
+// ClearTable clears the specified table after confirmation.
 func ClearTable(db *gorm.DB, table string) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, fmt.Sprintf("Clear table %q? [y/N]: ", table)) {
@@ -26,7 +26,7 @@ func ClearTable(db *gorm.DB, table string) {
 	fmt.Printf("Table %q cleared.\n", table)
 }
 
-// ClearAllTables очищает все таблицы после подтверждения.
+// ClearAllTables clears all tables after confirmation.
 func ClearAllTables(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, "This will clear ALL tables. Are you sure? [y/N]: ") {
@@ -39,7 +39,7 @@ func ClearAllTables(db *gorm.DB) {
 	fmt.Println("All tables cleared.")
 }
 
-// DropTable удаляет указанную таблицу после подтверждения.
+// DropTable drops the specified table after confirmation.
 func DropTable(db *gorm.DB, table string) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, fmt.Sprintf("Drop table %q? [y/N]: ", table)) {
@@ -52,7 +52,7 @@ func DropTable(db *gorm.DB, table string) {
 	fmt.Printf("Table %q dropped.\n", table)
 }
 
-// DropAllTables удаляет все таблицы после подтверждения.
+// DropAllTables drops all tables after confirmation.
 func DropAllTables(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, "This will DROP ALL tables. Are you sure? [y/N]: ") {
@@ -65,7 +65,7 @@ func DropAllTables(db *gorm.DB) {
 	fmt.Println("All tables dropped.")
 }
 
-// ExecuteSQL выполняет SQL-запрос и выводит результат в виде таблицы.
+// ExecuteSQL runs an SQL query and prints the result as a table.
 func ExecuteSQL(db *gorm.DB, query string) {
 	columns, rows, affected, err := database.ExecuteSQL(db, query)
 	if err != nil {
@@ -78,7 +78,7 @@ func ExecuteSQL(db *gorm.DB, query string) {
 	fmt.Printf("Query executed. Rows affected: %d\n", affected)
 }
 
-// ShowTables выводит список таблиц (вспомогательная команда).
+// ShowTables prints the list of tables (helper command).
 func ShowTables(db *gorm.DB) {
 	tables, err := database.ListTables(db)
 	if err != nil {
@@ -95,7 +95,7 @@ func ShowTables(db *gorm.DB) {
 	cliutil.PrintTable([]string{"Table"}, rows)
 }
 
-// ReadSQLFromArgs объединяет аргументы в одну SQL-команду.
+// ReadSQLFromArgs joins arguments into a single SQL command.
 func ReadSQLFromArgs(args []string) string {
 	return strings.Join(args, " ")
 }

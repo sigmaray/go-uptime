@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ToolsPage отображает страницу инструментов разработчика.
+// ToolsPage displays the developer tools page.
 func (h *Handler) ToolsPage(c *gin.Context) {
 	tables, err := database.ListTables(h.DB)
 	if err != nil {
@@ -42,7 +42,7 @@ type toolsSQLRequest struct {
 	Query string `json:"query" binding:"required"`
 }
 
-// ToolsClearTable очищает выбранную таблицу (только development).
+// ToolsClearTable clears the selected table (development only).
 func (h *Handler) ToolsClearTable(c *gin.Context) {
 	var req toolsClearTableRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,7 +56,7 @@ func (h *Handler) ToolsClearTable(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// ToolsExecuteSQL выполняет SQL с таймаутом 1 минуту и возвращает результат JSON.
+// ToolsExecuteSQL runs SQL with a 1-minute timeout and returns the result as JSON.
 func (h *Handler) ToolsExecuteSQL(c *gin.Context) {
 	var req toolsSQLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -101,7 +101,7 @@ func (h *Handler) ToolsExecuteSQL(c *gin.Context) {
 	}
 }
 
-// ToolsSeedMonitors создаёт демонстрационные URL для мониторинга.
+// ToolsSeedMonitors creates demonstration URLs for monitoring.
 func (h *Handler) ToolsSeedMonitors(c *gin.Context) {
 	created, err := models.SeedMonitorURLs(h.DB)
 	if err != nil {
@@ -111,7 +111,7 @@ func (h *Handler) ToolsSeedMonitors(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"created": created})
 }
 
-// ToolsTestTelegram отправляет тестовое Telegram-оповещение (только development).
+// ToolsTestTelegram sends a test Telegram notification (development only).
 func (h *Handler) ToolsTestTelegram(c *gin.Context) {
 	settings, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
@@ -125,7 +125,7 @@ func (h *Handler) ToolsTestTelegram(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// ToolsTestSMTP отправляет тестовое email-оповещение (только development).
+// ToolsTestSMTP sends a test email notification (development only).
 func (h *Handler) ToolsTestSMTP(c *gin.Context) {
 	settings, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
@@ -139,13 +139,13 @@ func (h *Handler) ToolsTestSMTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// ToolsTestError добавляет тестовую запись об ошибке в память (только development).
+// ToolsTestError adds a test error record to memory (development only).
 func (h *Handler) ToolsTestError(c *gin.Context) {
 	applog.AddError("test error from dev tools", "manual trigger")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// ToolsTestLog добавляет тестовое событие приложения в память (только development).
+// ToolsTestLog adds a test application event to memory (development only).
 func (h *Handler) ToolsTestLog(c *gin.Context) {
 	message := fmt.Sprintf("test event from dev tools at %s", time.Now().Format(time.RFC3339))
 	applog.AddEvent("dev-tools", message)

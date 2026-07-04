@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SettingsPage отображает страницу настроек мониторинга.
+// SettingsPage renders the monitoring settings page.
 func (h *Handler) SettingsPage(c *gin.Context) {
 	interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
 	notifications, err := models.LoadNotificationSettings(h.DB)
@@ -19,10 +19,10 @@ func (h *Handler) SettingsPage(c *gin.Context) {
 		notifications = models.NotificationSettings{SMTPPort: 587}
 	}
 
-	h.renderPage(c, http.StatusOK, "app/settings/index.html", h.settingsPageData(interval, notifications), PageOptions{Title: "Settings", ActiveNav: "settings"})
+	h.renderPage(c, http.StatusOK, "admin/settings/index.html", h.settingsPageData(interval, notifications), PageOptions{Title: "Settings", ActiveNav: "settings"})
 }
 
-// UpdateSettings сохраняет настройки мониторинга.
+// UpdateSettings saves monitoring settings from the settings form.
 func (h *Handler) UpdateSettings(c *gin.Context) {
 	var input models.SettingsInput
 	if err := c.ShouldBind(&input); err != nil {
@@ -30,7 +30,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		notifications, _ := models.LoadNotificationSettings(h.DB)
 		data := h.settingsPageData(interval, notifications)
 		data["Error"] = "Invalid form data"
-		h.renderPage(c, http.StatusBadRequest, "app/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
+		h.renderPage(c, http.StatusBadRequest, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
 		return
 	}
 	if input.SMTPPort == 0 {
@@ -40,7 +40,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
 		data := h.settingsPageData(interval, notificationSettingsFromInput(input))
 		data["Error"] = models.FormatValidationError(err)
-		h.renderPage(c, http.StatusBadRequest, "app/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
+		h.renderPage(c, http.StatusBadRequest, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
 		data := h.settingsPageData(interval, notificationSettingsFromInput(input))
 		data["Error"] = "Failed to save settings"
-		h.renderPage(c, http.StatusInternalServerError, "app/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
+		h.renderPage(c, http.StatusInternalServerError, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
 		return
 	}
 
@@ -56,15 +56,15 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	if err := models.SaveNotificationSettings(h.DB, notifications, true); err != nil {
 		data := h.settingsPageData(input.CheckIntervalSeconds, notifications)
 		data["Error"] = "Failed to save notification settings"
-		h.renderPage(c, http.StatusInternalServerError, "app/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
+		h.renderPage(c, http.StatusInternalServerError, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
 		return
 	}
 
 	applog.AddEvent("settings", fmt.Sprintf("Check interval set to %d seconds", input.CheckIntervalSeconds))
-	c.Redirect(http.StatusFound, "/app/settings?saved=1")
+	redirectWithFlash(c, "/admin/settings", flashSavedMessage)
 }
 
-// notificationSettingsFromInput преобразует данные формы в структуру настроек уведомлений.
+// notificationSettingsFromInput maps submitted form values to notification settings.
 func notificationSettingsFromInput(input models.SettingsInput) models.NotificationSettings {
 	return models.NotificationSettings{
 		TelegramURL:  input.TelegramURL,

@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UsersList отображает список пользователей.
+// UsersList displays the user list.
 func (h *Handler) UsersList(c *gin.Context) {
 	var users []models.User
 	h.DB.Order("created_at desc").Find(&users)
@@ -21,7 +21,7 @@ func (h *Handler) UsersList(c *gin.Context) {
 	}, PageOptions{Title: "Users", ActiveNav: "users"})
 }
 
-// NewUserPage отображает форму создания пользователя.
+// NewUserPage displays the user creation form.
 func (h *Handler) NewUserPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/users/new.html", gin.H{}, PageOptions{
 		Title:     "Create User",
@@ -29,7 +29,7 @@ func (h *Handler) NewUserPage(c *gin.Context) {
 	})
 }
 
-// CreateUser обрабатывает создание пользователя.
+// CreateUser handles user creation.
 func (h *Handler) CreateUser(c *gin.Context) {
 	var input models.CreateUserInput
 	if err := c.ShouldBind(&input); err != nil {
@@ -57,10 +57,10 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Created user %q", input.Username))
-	c.Redirect(http.StatusFound, "/admin/users?saved=1")
+	redirectWithFlash(c, "/admin/users", flashSavedMessage)
 }
 
-// EditUserPage отображает форму редактирования пользователя.
+// EditUserPage displays the user edit form.
 func (h *Handler) EditUserPage(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -79,7 +79,7 @@ func (h *Handler) EditUserPage(c *gin.Context) {
 	}, PageOptions{Title: "Edit User", ActiveNav: "users"})
 }
 
-// UpdateUser обрабатывает обновление пользователя.
+// UpdateUser handles user updates.
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -132,10 +132,10 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Updated user %q", user.Username))
-	c.Redirect(http.StatusFound, "/admin/users?saved=1")
+	redirectWithFlash(c, "/admin/users", flashSavedMessage)
 }
 
-// DeleteUser удаляет пользователя.
+// DeleteUser deletes a user.
 func (h *Handler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -155,5 +155,5 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Deleted user %q", user.Username))
-	c.Redirect(http.StatusFound, "/admin/users?deleted=1")
+	redirectWithFlash(c, "/admin/users", flashDeletedMessage)
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// PageOptions — параметры отображения страницы в layout.
+// PageOptions holds layout rendering options for an HTML page.
 type PageOptions struct {
 	Title     string
 	ActiveNav string
@@ -19,18 +19,7 @@ type PageOptions struct {
 	Success   string
 }
 
-// flashMessage возвращает сообщение об успехе из query-параметров redirect.
-func flashMessage(c *gin.Context) string {
-	if c.Query("saved") == "1" {
-		return "Saved successfully."
-	}
-	if c.Query("deleted") == "1" {
-		return "Deleted successfully."
-	}
-	return ""
-}
-
-// renderPage рендерит страницу через общий layout.
+// renderPage renders a page through the shared admin layout.
 func (h *Handler) renderPage(c *gin.Context, status int, contentTmpl string, data gin.H, opts PageOptions) {
 	if data == nil {
 		data = gin.H{}
@@ -46,7 +35,7 @@ func (h *Handler) renderPage(c *gin.Context, status int, contentTmpl string, dat
 
 	successMsg := opts.Success
 	if successMsg == "" {
-		successMsg = flashMessage(c)
+		successMsg = consumeFlash(c)
 	}
 
 	session := sessions.Default(c)

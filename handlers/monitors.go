@@ -19,7 +19,7 @@ type MonitorListItem struct {
 	Uptime      models.MonitorUptime
 }
 
-// MonitorsList отображает список мониторируемых URL со статусом.
+// MonitorsList displays the list of monitored URLs with status.
 func (h *Handler) MonitorsList(c *gin.Context) {
 	var monitors []models.MonitorURL
 	h.DB.Order("created_at desc").Find(&monitors)
@@ -59,7 +59,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 
-// NewMonitorPage отображает форму создания URL.
+// NewMonitorPage displays the URL creation form.
 func (h *Handler) NewMonitorPage(c *gin.Context) {
 	_, notifyData, err := h.monitorNotificationContext()
 	if err != nil {
@@ -81,7 +81,7 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 	})
 }
 
-// CreateMonitor обрабатывает создание URL.
+// CreateMonitor handles URL creation.
 func (h *Handler) CreateMonitor(c *gin.Context) {
 	var input models.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
@@ -128,7 +128,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Created monitor %q (%s)", monitor.Name, monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors?saved=1")
+	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
 // MonitorShowPage renders monitor details and heartbeat history.
@@ -174,7 +174,7 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 	}, PageOptions{Title: displayName, ActiveNav: "monitors"})
 }
 
-// EditMonitorPage отображает форму редактирования URL.
+// EditMonitorPage displays the URL edit form.
 func (h *Handler) EditMonitorPage(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -207,7 +207,7 @@ func (h *Handler) EditMonitorPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/monitors/edit.html", data, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 }
 
-// UpdateMonitor обрабатывает обновление URL.
+// UpdateMonitor handles URL updates.
 func (h *Handler) UpdateMonitor(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -265,10 +265,10 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Updated monitor %q (%s)", monitor.Name, monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors?saved=1")
+	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
-// DeleteMonitor удаляет URL из мониторинга.
+// DeleteMonitor removes a URL from monitoring.
 func (h *Handler) DeleteMonitor(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -288,5 +288,5 @@ func (h *Handler) DeleteMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Deleted monitor %q (%s)", models.MonitorDisplayName(monitor), monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors?deleted=1")
+	redirectWithFlash(c, "/admin/monitors", flashDeletedMessage)
 }

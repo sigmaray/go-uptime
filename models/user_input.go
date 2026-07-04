@@ -1,20 +1,20 @@
 package models
 
-// CreateUserInput — данные формы создания пользователя.
+// CreateUserInput holds form data for creating a user.
 type CreateUserInput struct {
 	Username        string `form:"username" validate:"required,min=1,max=100" label:"login"`
-	Password        string `form:"password" validate:"required,min=1" label:"password"`
+	Password        string `form:"password" validate:"required,min=8,max=128" label:"password"`
 	ConfirmPassword string `form:"confirm_password" validate:"required,eqfield=Password" label:"confirm password"`
 }
 
-// UpdateUserInput — данные формы редактирования пользователя.
+// UpdateUserInput holds form data for editing a user.
 type UpdateUserInput struct {
 	Username        string `form:"username" validate:"required,min=1,max=100" label:"login"`
-	Password        string `form:"password" validate:"omitempty,min=1" label:"password"`
+	Password        string `form:"password" validate:"omitempty,min=8,max=128" label:"password"`
 	ConfirmPassword string `form:"confirm_password" validate:"eqfield=Password" label:"confirm password"`
 }
 
-// MonitorURLInput — данные формы создания/редактирования URL для мониторинга.
+// MonitorURLInput holds form data for creating or editing a monitored URL.
 type MonitorURLInput struct {
 	Name           string `form:"name" validate:"omitempty,max=200" label:"name"`
 	URL            string `form:"url" validate:"required,url,monitor_url" label:"url"`
@@ -22,7 +22,7 @@ type MonitorURLInput struct {
 	NotifySMTP     bool   `form:"-"`
 }
 
-// SettingsInput — данные формы настроек мониторинга.
+// SettingsInput holds monitoring settings form data.
 type SettingsInput struct {
 	CheckIntervalSeconds int    `form:"check_interval_seconds" validate:"required,min=10,max=86400" label:"check interval"`
 	TelegramURL          string `form:"notification_telegram_url" validate:"omitempty,telegram_shoutrrr_url" label:"telegram URL"`

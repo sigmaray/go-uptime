@@ -1,4 +1,4 @@
-// Package applog хранит последние записи логов, событий и ошибок в памяти процесса.
+// Package applog stores recent log entries, events, and errors in process memory.
 package applog
 
 import (
@@ -8,7 +8,7 @@ import (
 
 const maxEntries = 200
 
-// Entry — одна запись в памяти.
+// Entry is a single in-memory log record.
 type Entry struct {
 	Time    time.Time `json:"time"`
 	Level   string    `json:"level"`
@@ -16,14 +16,14 @@ type Entry struct {
 	Fields  string    `json:"fields"`
 }
 
-// EventEntry — событие приложения (не HTTP-запрос).
+// EventEntry is an application event (not an HTTP request).
 type EventEntry struct {
 	Time     time.Time `json:"time"`
 	Category string    `json:"category"`
 	Message  string    `json:"message"`
 }
 
-// MonitorRequestEntry — HTTP-запрос воркера к мониторируемому сайту.
+// MonitorRequestEntry is a worker HTTP request to a monitored site.
 type MonitorRequestEntry struct {
 	Time           time.Time `json:"time"`
 	MonitorName    string    `json:"monitor_name"`
@@ -61,7 +61,7 @@ func addLogEntry(entry Entry) {
 	logs = appendRing(logs, entry)
 }
 
-// AddEvent добавляет событие приложения в кольцевой буфер.
+// AddEvent appends an application event to the ring buffer.
 func AddEvent(category, message string) {
 	eventMu.Lock()
 	defer eventMu.Unlock()
@@ -72,7 +72,7 @@ func AddEvent(category, message string) {
 	})
 }
 
-// AddError добавляет запись об ошибке в кольцевой буфер.
+// AddError appends an error record to the ring buffer.
 func AddError(message, fields string) {
 	errorMu.Lock()
 	defer errorMu.Unlock()
@@ -84,7 +84,7 @@ func AddError(message, fields string) {
 	})
 }
 
-// RecentLogs возвращает последние записи логов (не более maxEntries), новые первыми.
+// RecentLogs returns the most recent log entries (at most maxEntries), newest first.
 func RecentLogs() []Entry {
 	logMu.RLock()
 	defer logMu.RUnlock()
@@ -93,7 +93,7 @@ func RecentLogs() []Entry {
 	return out
 }
 
-// AddMonitorRequest сохраняет HTTP-запрос воркера к мониторируемому сайту в памяти.
+// AddMonitorRequest stores a worker HTTP request to a monitored site in memory.
 func AddMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
 	requestMu.Lock()
 	defer requestMu.Unlock()
@@ -108,7 +108,7 @@ func AddMonitorRequest(monitorName, url string, statusCode int, responseTimeMs i
 	})
 }
 
-// RecentEvents возвращает последние события приложения (не более maxEntries), новые первыми.
+// RecentEvents returns the most recent application events (at most maxEntries), newest first.
 func RecentEvents() []EventEntry {
 	eventMu.RLock()
 	defer eventMu.RUnlock()
@@ -117,7 +117,7 @@ func RecentEvents() []EventEntry {
 	return out
 }
 
-// RecentMonitorRequests возвращает последние HTTP-запросы к мониторам (не более maxEntries), новые первыми.
+// RecentMonitorRequests returns the most recent monitor HTTP requests (at most maxEntries), newest first.
 func RecentMonitorRequests() []MonitorRequestEntry {
 	requestMu.RLock()
 	defer requestMu.RUnlock()
@@ -126,7 +126,7 @@ func RecentMonitorRequests() []MonitorRequestEntry {
 	return out
 }
 
-// RecentErrors возвращает последние записи ошибок (не более maxEntries).
+// RecentErrors returns the most recent error records (at most maxEntries).
 func RecentErrors() []Entry {
 	errorMu.RLock()
 	defer errorMu.RUnlock()

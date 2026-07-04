@@ -9,24 +9,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PlaywrightSQLRequest — тело запроса для выполнения SQL в тестах.
+// PlaywrightSQLRequest is the request body for executing SQL in tests.
 type PlaywrightSQLRequest struct {
 	Query string        `json:"query" binding:"required"`
 	Args  []interface{} `json:"args"`
 }
 
-// PlaywrightClearTableRequest — тело запроса для очистки таблицы в тестах.
+// PlaywrightClearTableRequest is the request body for clearing a table in tests.
 type PlaywrightClearTableRequest struct {
 	Table string `json:"table" binding:"required"`
 }
 
-// PlaywrightCreateUserRequest — тело запроса для создания пользователя в тестах.
+// PlaywrightCreateUserRequest is the request body for creating a user in tests.
 type PlaywrightCreateUserRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
-// PlaywrightExecuteSQL выполняет SQL для Playwright-тестов.
+// PlaywrightExecuteSQL executes SQL for Playwright tests.
 func (h *Handler) PlaywrightExecuteSQL(c *gin.Context) {
 	var req PlaywrightSQLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,7 +52,7 @@ func (h *Handler) PlaywrightExecuteSQL(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "rows_affected": affected})
 }
 
-// PlaywrightClearTable очищает таблицу для Playwright-тестов.
+// PlaywrightClearTable clears a table for Playwright tests.
 func (h *Handler) PlaywrightClearTable(c *gin.Context) {
 	var req PlaywrightClearTableRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -68,7 +68,7 @@ func (h *Handler) PlaywrightClearTable(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// PlaywrightCreateUser создаёт пользователя для Playwright-тестов.
+// PlaywrightCreateUser creates a user for Playwright tests.
 func (h *Handler) PlaywrightCreateUser(c *gin.Context) {
 	var req PlaywrightCreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

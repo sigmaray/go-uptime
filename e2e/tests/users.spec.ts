@@ -29,14 +29,14 @@ test.describe('Users CRUD', () => {
     await page.locator('#confirm_password').fill('secret123');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/users?saved=1');
+    await expect(page).toHaveURL('/admin/users');
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('newuser')).toBeVisible();
 
     await page.getByRole('row', { name: /newuser/ }).getByRole('link', { name: 'Edit' }).click();
     await page.locator('#username').fill('renamed');
     await page.getByRole('button', { name: 'Save' }).click();
-    await expect(page).toHaveURL('/admin/users?saved=1');
+    await expect(page).toHaveURL('/admin/users');
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('renamed')).toBeVisible();
 
@@ -61,7 +61,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/monitors?saved=1');
+    await expect(page).toHaveURL('/admin/monitors');
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('https://example.com')).toBeVisible();
   });
@@ -71,7 +71,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://example.org');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/monitors?saved=1');
+    await expect(page).toHaveURL('/admin/monitors');
     await expect(page.getByRole('cell', { name: 'example.org', exact: true })).toBeVisible();
   });
 
@@ -253,10 +253,10 @@ test.describe('Settings', () => {
   test('updates check interval', async ({ page, request }) => {
     await login(page, request);
 
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await page.locator('#check_interval_seconds').fill('120');
     await page.getByRole('button', { name: 'Save' }).click();
-    await expect(page).toHaveURL('/app/settings?saved=1');
+    await expect(page).toHaveURL('/admin/settings');
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.locator('#check_interval_seconds')).toHaveValue('120');
   });
@@ -276,7 +276,7 @@ test.describe('Dev tools', () => {
   });
 
   test('enables notification test buttons when settings are saved', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await page.locator('#notification_telegram_url').fill('telegram://token@telegram?channels=123');
     await page.locator('#notification_smtp_host').fill('smtp.example.com');
     await page.locator('#notification_smtp_to').fill('ops@example.com');

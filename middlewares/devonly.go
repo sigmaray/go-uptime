@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DevelopmentOnly разрешает доступ только в режиме development.
+// DevelopmentOnly allows access only in development mode.
 func DevelopmentOnly(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !cfg.IsDevelopment() {

@@ -3,7 +3,7 @@
     <legend class="form-label fs-6 mb-2">Notifications</legend>
     {{ if and (not .TelegramConfigured) (not .SMTPConfigured) }}
     <div class="alert alert-secondary py-2 small monitor-notifications__hint" role="status">
-        Configure Telegram or SMTP credentials in <a href="/app/settings">Settings</a> to enable notifications for this monitor.
+        Configure Telegram or SMTP credentials in <a href="/admin/settings">Settings</a> to enable notifications for this monitor.
     </div>
     {{ else }}
     <div class="form-text monitor-notifications__hint mb-2">

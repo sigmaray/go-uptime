@@ -1,4 +1,4 @@
-// Package worker выполняет фоновые HTTP-проверки мониторируемых URL.
+// Package worker performs background HTTP checks of monitored URLs.
 package worker
 
 import (
@@ -19,7 +19,7 @@ import (
 
 const requestTimeout = 15 * time.Second
 
-// MonitorWorker периодически проверяет URL из базы данных.
+// MonitorWorker periodically checks URLs from the database.
 type MonitorWorker struct {
 	db     *gorm.DB
 	cfg    *config.Config
@@ -27,7 +27,7 @@ type MonitorWorker struct {
 	stop   chan struct{}
 }
 
-// New создаёт новый экземпляр фонового воркера мониторинга.
+// New creates a new background monitoring worker instance.
 func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 	return &MonitorWorker{
 		db:  db,
@@ -45,7 +45,7 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 	}
 }
 
-// Start запускает цикл проверок в отдельной горутине.
+// Start runs the check loop in a separate goroutine.
 func (w *MonitorWorker) Start() {
 	go w.backfillUptimeStatsIfNeeded()
 	go w.loop()
@@ -67,7 +67,7 @@ func (w *MonitorWorker) backfillUptimeStatsIfNeeded() {
 	}
 }
 
-// Stop останавливает воркер.
+// Stop stops the worker.
 func (w *MonitorWorker) Stop() {
 	close(w.stop)
 }
@@ -255,7 +255,7 @@ func (w *MonitorWorker) recordCheck(monitorID uint, checkedAt time.Time, isUp bo
 	}
 }
 
-// sendNotifications отправляет оповещения о смене статуса, если каналы настроены и включены для монитора.
+// sendNotifications sends status-change notifications when channels are configured and enabled for the monitor.
 func (w *MonitorWorker) sendNotifications(monitor models.MonitorURL, isUp bool, errMsg string) {
 	if !monitor.NotifyTelegram && !monitor.NotifySMTP {
 		return

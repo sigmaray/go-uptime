@@ -33,7 +33,7 @@ test.describe('Authentication', () => {
     await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Logout' }).click();
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/login');
   });
 
   test('shows error on invalid credentials', async ({ page }) => {

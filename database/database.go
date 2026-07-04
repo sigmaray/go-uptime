@@ -1,4 +1,4 @@
-// Package database отвечает за подключение к PostgreSQL и миграции Goose.
+// Package database handles PostgreSQL connections and Goose migrations.
 package database
 
 import (
@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// DSN формирует строку подключения к PostgreSQL из конфигурации.
+// DSN builds a PostgreSQL connection string from configuration.
 func DSN(c config.DatabaseConfig) string {
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -28,7 +28,7 @@ func DSN(c config.DatabaseConfig) string {
 	)
 }
 
-// Connect открывает соединение с PostgreSQL через GORM.
+// Connect opens a PostgreSQL connection through GORM.
 func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	db, err := gorm.Open(postgres.Open(DSN(cfg)), &gorm.Config{})
 	if err != nil {
@@ -45,7 +45,7 @@ func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	return db
 }
 
-// RunGooseMigrations применяет встроенные SQL-миграции Goose.
+// RunGooseMigrations applies embedded Goose SQL migrations.
 func RunGooseMigrations(migrations embed.FS, cfg config.DatabaseConfig) {
 	db := Connect(cfg)
 
@@ -84,7 +84,7 @@ func runMigrations(migrations embed.FS, sqlDB *sql.DB) {
 	}
 }
 
-// RunGormAutoMigrate создаёт/обновляет таблицы через GORM AutoMigrate.
+// RunGormAutoMigrate creates or updates tables through GORM AutoMigrate.
 func RunGormAutoMigrate(cfg config.DatabaseConfig) {
 	db := Connect(cfg)
 	if err := db.AutoMigrate(
@@ -101,7 +101,7 @@ func RunGormAutoMigrate(cfg config.DatabaseConfig) {
 	}
 }
 
-// ListTables возвращает имена пользовательских таблиц в public-схеме.
+// ListTables returns user table names in the public schema.
 func ListTables(db *gorm.DB) ([]string, error) {
 	var tables []string
 	err := db.Raw(`
@@ -112,19 +112,19 @@ func ListTables(db *gorm.DB) ([]string, error) {
 	return tables, err
 }
 
-// ClearTable очищает указанную таблицу.
+// ClearTable clears the specified table.
 func ClearTable(db *gorm.DB, table string) error {
 	table = sanitizeIdentifier(table)
 	return db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", table)).Error
 }
 
-// DropTable удаляет указанную таблицу.
+// DropTable drops the specified table.
 func DropTable(db *gorm.DB, table string) error {
 	table = sanitizeIdentifier(table)
 	return db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)).Error
 }
 
-// ClearAllTables очищает все пользовательские таблицы.
+// ClearAllTables clears all user tables.
 func ClearAllTables(db *gorm.DB) error {
 	tables, err := ListTables(db)
 	if err != nil {
@@ -138,7 +138,7 @@ func ClearAllTables(db *gorm.DB) error {
 	return nil
 }
 
-// DropAllTables удаляет все пользовательские таблицы.
+// DropAllTables drops all user tables.
 func DropAllTables(db *gorm.DB) error {
 	tables, err := ListTables(db)
 	if err != nil {
@@ -152,7 +152,7 @@ func DropAllTables(db *gorm.DB) error {
 	return nil
 }
 
-// ExecuteSQL выполняет произвольный SQL и возвращает строки результата для SELECT-запросов.
+// ExecuteSQL runs arbitrary SQL and returns result rows for SELECT queries.
 func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, rowsAffected int64, err error) {
 	trimmed := strings.TrimSpace(strings.ToUpper(query))
 	if strings.HasPrefix(trimmed, "SELECT") || strings.HasPrefix(trimmed, "WITH") {

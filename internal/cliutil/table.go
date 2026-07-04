@@ -1,4 +1,4 @@
-// Package cliutil содержит вспомогательные функции для CLI-вывода.
+// Package cliutil provides helper functions for CLI output.
 package cliutil
 
 import (
@@ -8,12 +8,12 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-// PrintTable выводит таблицу в stdout.
+// PrintTable prints a table to stdout.
 func PrintTable(headers []string, rows [][]string) {
 	printTableTo(os.Stdout, headers, rows)
 }
 
-// PrintTableTo выводит таблицу в указанный writer.
+// PrintTableTo prints a table to the specified writer.
 func PrintTableTo(w io.Writer, headers []string, rows [][]string) {
 	printTableTo(w, headers, rows)
 }

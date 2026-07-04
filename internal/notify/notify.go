@@ -1,4 +1,4 @@
-// Package notify отправляет оповещения о смене статуса мониторов через Shoutrrr.
+// Package notify sends monitor status-change notifications via Shoutrrr.
 package notify
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/nicholas-fedor/shoutrrr"
 )
 
-// MonitorStateChange описывает смену доступности монитора для оповещения.
+// MonitorStateChange describes a monitor availability change for notification.
 type MonitorStateChange struct {
 	DisplayName string
 	URL         string
@@ -20,8 +20,8 @@ type MonitorStateChange struct {
 
 const testNotificationMessage = "Go Uptime test notification from Dev Tools."
 
-// SendTestTelegram отправляет тестовое сообщение в Telegram.
-// settings — системные настройки с Shoutrrr URL.
+// SendTestTelegram sends a test message to Telegram.
+// settings holds system settings with the Shoutrrr URL.
 func SendTestTelegram(settings models.NotificationSettings) error {
 	if !settings.TelegramConfigured() {
 		return fmt.Errorf("telegram is not configured")
@@ -29,8 +29,8 @@ func SendTestTelegram(settings models.NotificationSettings) error {
 	return shoutrrr.Send(settings.TelegramURL, testNotificationMessage)
 }
 
-// SendTestSMTP отправляет тестовое письмо через SMTP.
-// settings — системные настройки SMTP.
+// SendTestSMTP sends a test email via SMTP.
+// settings holds system SMTP settings.
 func SendTestSMTP(settings models.NotificationSettings) error {
 	if !settings.SMTPConfigured() {
 		return fmt.Errorf("smtp is not configured")
@@ -42,9 +42,9 @@ func SendTestSMTP(settings models.NotificationSettings) error {
 	return shoutrrr.Send(smtpURL, testNotificationMessage)
 }
 
-// SendMonitorStateChange отправляет оповещения по включённым каналам.
-// settings — системные настройки каналов; monitor — монитор с флагами notify_*;
-// change — описание события.
+// SendMonitorStateChange sends notifications through enabled channels.
+// settings holds system channel settings; monitor is the monitor with notify_* flags;
+// change describes the event.
 func SendMonitorStateChange(settings models.NotificationSettings, monitor models.MonitorURL, change MonitorStateChange) error {
 	message := formatMonitorMessage(change)
 	var errs []error
@@ -67,7 +67,7 @@ func SendMonitorStateChange(settings models.NotificationSettings, monitor models
 	return joinErrors(errs)
 }
 
-// formatMonitorMessage формирует текст оповещения о смене статуса монитора.
+// formatMonitorMessage builds the notification text for a monitor status change.
 func formatMonitorMessage(change MonitorStateChange) string {
 	name := strings.TrimSpace(change.DisplayName)
 	if name == "" {
@@ -82,7 +82,7 @@ func formatMonitorMessage(change MonitorStateChange) string {
 	return fmt.Sprintf("Monitor %q (%s) is DOWN: %s", name, change.URL, change.Error)
 }
 
-// monitorStateSubject возвращает тему письма для SMTP-оповещения.
+// monitorStateSubject returns the email subject for an SMTP notification.
 func monitorStateSubject(change MonitorStateChange) string {
 	name := strings.TrimSpace(change.DisplayName)
 	if name == "" {
@@ -94,7 +94,7 @@ func monitorStateSubject(change MonitorStateChange) string {
 	return fmt.Sprintf("Monitor DOWN: %s", name)
 }
 
-// joinErrors объединяет несколько ошибок отправки в одну.
+// joinErrors combines multiple send errors into one.
 func joinErrors(errs []error) error {
 	if len(errs) == 0 {
 		return nil

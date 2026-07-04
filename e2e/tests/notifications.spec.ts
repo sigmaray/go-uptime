@@ -31,21 +31,21 @@ test.describe('Notifications', () => {
   });
 
   test('shows notification settings fields', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await expect(page.locator('#notification_telegram_url')).toBeVisible();
     await expect(page.locator('#notification_smtp_host')).toBeVisible();
     await expect(page.locator('#notification_smtp_to')).toBeVisible();
   });
 
   test('saves telegram and smtp settings', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await page.locator('#notification_telegram_url').fill('telegram://token@telegram?channels=123');
     await page.locator('#notification_smtp_host').fill('smtp.example.com');
     await page.locator('#notification_smtp_port').fill('587');
     await page.locator('#notification_smtp_to').fill('ops@example.com');
     await page.getByRole('button', { name: 'Save' }).click();
 
-    await expect(page).toHaveURL('/app/settings?saved=1');
+    await expect(page).toHaveURL('/admin/settings');
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.locator('#notification_telegram_url')).toHaveValue('telegram://token@telegram?channels=123');
     await expect(page.locator('#notification_smtp_host')).toHaveValue('smtp.example.com');
@@ -60,7 +60,7 @@ test.describe('Notifications', () => {
   });
 
   test('enables monitor notification checkboxes when credentials exist', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await page.locator('#notification_telegram_url').fill('telegram://token@telegram?channels=123');
     await page.locator('#notification_smtp_host').fill('smtp.example.com');
     await page.locator('#notification_smtp_to').fill('ops@example.com');
@@ -73,7 +73,7 @@ test.describe('Notifications', () => {
   });
 
   test('saves monitor notification preferences', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/admin/settings');
     await page.locator('#notification_telegram_url').fill('telegram://token@telegram?channels=123');
     await page.getByRole('button', { name: 'Save' }).click();
 

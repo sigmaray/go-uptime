@@ -10,23 +10,23 @@ import (
 )
 
 const (
-	// SettingNotificationTelegramURL — ключ Shoutrrr URL для Telegram в app_settings.
+	// SettingNotificationTelegramURL is the app_settings key for the Telegram Shoutrrr URL.
 	SettingNotificationTelegramURL = "notification_telegram_url"
-	// SettingNotificationSMTPHost — ключ SMTP-хоста в app_settings.
+	// SettingNotificationSMTPHost is the app_settings key for the SMTP host.
 	SettingNotificationSMTPHost = "notification_smtp_host"
-	// SettingNotificationSMTPPort — ключ SMTP-порта в app_settings.
+	// SettingNotificationSMTPPort is the app_settings key for the SMTP port.
 	SettingNotificationSMTPPort = "notification_smtp_port"
-	// SettingNotificationSMTPUser — ключ SMTP-логина в app_settings.
+	// SettingNotificationSMTPUser is the app_settings key for the SMTP username.
 	SettingNotificationSMTPUser = "notification_smtp_user"
-	// SettingNotificationSMTPPassword — ключ SMTP-пароля в app_settings.
+	// SettingNotificationSMTPPassword is the app_settings key for the SMTP password.
 	SettingNotificationSMTPPassword = "notification_smtp_password"
-	// SettingNotificationSMTPFrom — ключ адреса отправителя SMTP в app_settings.
+	// SettingNotificationSMTPFrom is the app_settings key for the SMTP sender address.
 	SettingNotificationSMTPFrom = "notification_smtp_from"
-	// SettingNotificationSMTPTo — ключ адреса получателя SMTP в app_settings.
+	// SettingNotificationSMTPTo is the app_settings key for the SMTP recipient address.
 	SettingNotificationSMTPTo = "notification_smtp_to"
 )
 
-// NotificationSettings хранит параметры каналов оповещения из app_settings.
+// NotificationSettings holds notification channel parameters from app_settings.
 type NotificationSettings struct {
 	TelegramURL  string
 	SMTPHost     string
@@ -37,20 +37,20 @@ type NotificationSettings struct {
 	SMTPTo       string
 }
 
-// TelegramConfigured сообщает, задан ли Shoutrrr URL для Telegram.
+// TelegramConfigured reports whether a Telegram Shoutrrr URL is configured.
 func (s NotificationSettings) TelegramConfigured() bool {
 	return strings.TrimSpace(s.TelegramURL) != ""
 }
 
-// SMTPConfigured сообщает, заданы ли обязательные параметры SMTP.
+// SMTPConfigured reports whether required SMTP parameters are set.
 func (s NotificationSettings) SMTPConfigured() bool {
 	return strings.TrimSpace(s.SMTPHost) != "" &&
 		s.SMTPPort > 0 &&
 		strings.TrimSpace(s.SMTPTo) != ""
 }
 
-// LoadNotificationSettings читает настройки уведомлений из app_settings.
-// db — подключение GORM к PostgreSQL.
+// LoadNotificationSettings reads notification settings from app_settings.
+// db is the GORM connection to PostgreSQL.
 func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 	keys := []string{
 		SettingNotificationTelegramURL,
@@ -88,9 +88,9 @@ func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 	}, nil
 }
 
-// SaveNotificationSettings сохраняет настройки уведомлений в app_settings.
-// db — подключение GORM; settings — новые значения; keepSMTPPassword сохраняет
-// существующий пароль, если в settings.SMTPPassword пустая строка.
+// SaveNotificationSettings saves notification settings to app_settings.
+// db is the GORM connection; settings holds the new values; keepSMTPPassword retains
+// the existing password when settings.SMTPPassword is an empty string.
 func SaveNotificationSettings(db *gorm.DB, settings NotificationSettings, keepSMTPPassword bool) error {
 	if keepSMTPPassword && strings.TrimSpace(settings.SMTPPassword) == "" {
 		existing, err := LoadNotificationSettings(db)
@@ -120,8 +120,8 @@ func SaveNotificationSettings(db *gorm.DB, settings NotificationSettings, keepSM
 	return nil
 }
 
-// BuildSMTPShoutrrrURL собирает Shoutrrr URL для SMTP из отдельных полей настроек.
-// settings — параметры SMTP; subject — тема письма (может быть пустой).
+// BuildSMTPShoutrrrURL builds a Shoutrrr SMTP URL from individual settings fields.
+// settings holds SMTP parameters; subject is the email subject (may be empty).
 func BuildSMTPShoutrrrURL(settings NotificationSettings, subject string) (string, error) {
 	if !settings.SMTPConfigured() {
 		return "", fmt.Errorf("smtp settings are incomplete")

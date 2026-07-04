@@ -5,13 +5,14 @@ import (
 	"net/http"
 
 	"go-uptime/internal/applog"
+	"go-uptime/middlewares"
 	"go-uptime/models"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
-// LoginPage отображает форму входа.
+// LoginPage renders the login form.
 func (h *Handler) LoginPage(c *gin.Context) {
 	session := sessions.Default(c)
 	if session.Get("user") != nil {
@@ -25,8 +26,19 @@ func (h *Handler) LoginPage(c *gin.Context) {
 	})
 }
 
-// Login обрабатывает отправку формы входа.
+// Login handles login form submission.
 func (h *Handler) Login(c *gin.Context) {
+	if !middlewares.AllowLoginAttempt(c.ClientIP()) {
+		h.renderPage(c, http.StatusTooManyRequests, "admin/login/index.html", gin.H{
+			"Error": "Too many login attempts. Please try again later.",
+		}, PageOptions{
+			Title:     "Login",
+			HideNav:   true,
+			BodyClass: "bg-light",
+		})
+		return
+	}
+
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 
@@ -49,7 +61,7 @@ func (h *Handler) Login(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/admin/")
 }
 
-// Logout завершает сессию пользователя.
+// Logout ends the current user session.
 func (h *Handler) Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	username, _ := session.Get("user").(string)

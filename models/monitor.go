@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// PruneIncidents удаляет старые закрытые инциденты, чтобы ограничить рост данных.
+// PruneIncidents deletes old resolved incidents to limit data growth.
 func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 	if err := db.Where("resolved_at IS NOT NULL AND resolved_at < ?", cutoff).
@@ -41,7 +41,7 @@ func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
 	return nil
 }
 
-// SeedMonitorURLs создаёт демонстрационные URL для мониторинга.
+// SeedMonitorURLs creates demonstration URLs for monitoring.
 func SeedMonitorURLs(db *gorm.DB) (int, error) {
 	seeds := []MonitorURL{
 		{Name: "Example HTTP", URL: "http://example.com"},

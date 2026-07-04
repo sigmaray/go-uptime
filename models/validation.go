@@ -39,7 +39,7 @@ func init() {
 	_ = en_translations.RegisterDefaultTranslations(validate, trans)
 }
 
-// validateTelegramShoutrrrURL проверяет, что строка — непустой Shoutrrr URL для Telegram.
+// validateTelegramShoutrrrURL checks that the string is a non-empty Shoutrrr URL for Telegram.
 func validateTelegramShoutrrrURL(fl validator.FieldLevel) bool {
 	raw := strings.TrimSpace(fl.Field().String())
 	if raw == "" {
@@ -48,7 +48,7 @@ func validateTelegramShoutrrrURL(fl validator.FieldLevel) bool {
 	return strings.HasPrefix(strings.ToLower(raw), "telegram://")
 }
 
-// validateMonitorURL проверяет, что URL использует схему http или https.
+// validateMonitorURL checks that the URL uses the http or https scheme.
 func validateMonitorURL(fl validator.FieldLevel) bool {
 	raw := fl.Field().String()
 	parsed, err := url.Parse(raw)
@@ -58,27 +58,27 @@ func validateMonitorURL(fl validator.FieldLevel) bool {
 	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
-// Validate проверяет CreateUserInput.
+// Validate validates CreateUserInput.
 func (input CreateUserInput) Validate() error {
 	return validate.Struct(input)
 }
 
-// Validate проверяет UpdateUserInput.
+// Validate validates UpdateUserInput.
 func (input UpdateUserInput) Validate() error {
 	return validate.Struct(input)
 }
 
-// Validate проверяет MonitorURLInput.
+// Validate validates MonitorURLInput.
 func (input MonitorURLInput) Validate() error {
 	return validate.Struct(input)
 }
 
-// Validate проверяет SettingsInput.
+// Validate validates SettingsInput.
 func (input SettingsInput) Validate() error {
 	return validate.Struct(input)
 }
 
-// FormatValidationError преобразует ошибки валидатора в читаемую строку.
+// FormatValidationError converts validator errors into a human-readable string.
 func FormatValidationError(err error) string {
 	validationErrors, ok := err.(validator.ValidationErrors)
 	if !ok {
@@ -92,7 +92,7 @@ func FormatValidationError(err error) string {
 	return strings.Join(messages, "; ")
 }
 
-// GetCheckIntervalSeconds читает интервал проверки из БД или возвращает значение по умолчанию.
+// GetCheckIntervalSeconds reads the check interval from the database or returns the default value.
 func GetCheckIntervalSeconds(db *gorm.DB, defaultSeconds int) int {
 	var setting AppSetting
 	err := db.Where("key = ?", SettingCheckInterval).First(&setting).Error
@@ -106,7 +106,7 @@ func GetCheckIntervalSeconds(db *gorm.DB, defaultSeconds int) int {
 	return seconds
 }
 
-// SetCheckIntervalSeconds сохраняет интервал проверки в БД.
+// SetCheckIntervalSeconds saves the check interval to the database.
 func SetCheckIntervalSeconds(db *gorm.DB, seconds int) error {
 	setting := AppSetting{
 		Key:   SettingCheckInterval,
@@ -115,7 +115,7 @@ func SetCheckIntervalSeconds(db *gorm.DB, seconds int) error {
 	return db.Save(&setting).Error
 }
 
-// FindOpenIncident ищет открытый инцидент для указанного URL.
+// FindOpenIncident finds an open incident for the given URL.
 func FindOpenIncident(db *gorm.DB, monitorURLID uint) (*Incident, error) {
 	var incident Incident
 	err := db.Where("monitor_url_id = ? AND resolved_at IS NULL", monitorURLID).First(&incident).Error

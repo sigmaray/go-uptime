@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// HashPassword хеширует пароль с помощью bcrypt.
+// HashPassword hashes a password with bcrypt.
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -16,12 +16,12 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-// CheckPassword сравнивает пароль с bcrypt-хешем.
+// CheckPassword compares a password with a bcrypt hash.
 func CheckPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-// CreateUser создаёт нового пользователя с заданным логином и паролем.
+// CreateUser creates a new user with the given username and password.
 func CreateUser(db *gorm.DB, username, password string) (*User, error) {
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -40,7 +40,7 @@ func CreateUser(db *gorm.DB, username, password string) (*User, error) {
 	return &user, nil
 }
 
-// FindUserByUsername ищет пользователя по логину.
+// FindUserByUsername looks up a user by username.
 func FindUserByUsername(db *gorm.DB, username string) (*User, error) {
 	var user User
 	err := db.Where("username = ?", username).First(&user).Error

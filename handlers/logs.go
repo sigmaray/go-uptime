@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ErrorsPage отображает последние ошибки приложения из памяти.
+// ErrorsPage displays recent application errors from memory.
 func (h *Handler) ErrorsPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/errors/index.html", gin.H{
 		"Entries": applog.RecentErrors(),

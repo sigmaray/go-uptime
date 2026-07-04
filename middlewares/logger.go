@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ZerologLogger логирует HTTP-запросы через zerolog.
+// ZerologLogger logs HTTP requests through zerolog.
 func ZerologLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -39,7 +39,7 @@ func ZerologLogger() gin.HandlerFunc {
 	}
 }
 
-// ErrorCapture сохраняет ошибки Gin в памяти приложения.
+// ErrorCapture stores Gin errors in application memory.
 func ErrorCapture() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()

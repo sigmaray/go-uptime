@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// monitorNotificationContext собирает данные о доступности каналов оповещения для шаблонов.
+// monitorNotificationContext collects notification channel availability data for templates.
 func (h *Handler) monitorNotificationContext() (models.NotificationSettings, gin.H, error) {
 	settings, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
@@ -19,7 +19,7 @@ func (h *Handler) monitorNotificationContext() (models.NotificationSettings, gin
 	}, nil
 }
 
-// bindMonitorNotificationFlags читает флаги notify_* из формы с учётом системных настроек.
+// bindMonitorNotificationFlags reads notify_* flags from the form, respecting system settings.
 func (h *Handler) bindMonitorNotificationFlags(c *gin.Context, input *models.MonitorURLInput) error {
 	settings, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
@@ -37,7 +37,7 @@ func (h *Handler) bindMonitorNotificationFlags(c *gin.Context, input *models.Mon
 	return nil
 }
 
-// settingsPageData собирает данные для страницы настроек.
+// settingsPageData collects data for the settings page.
 func (h *Handler) settingsPageData(interval int, notifications models.NotificationSettings) gin.H {
 	return gin.H{
 		"CheckIntervalSeconds": interval,

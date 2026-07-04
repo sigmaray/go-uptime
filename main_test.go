@@ -157,7 +157,7 @@ func TestCLICommands(t *testing.T) {
 	})
 
 	t.Run("UsersCreate", func(t *testing.T) {
-		input := "testcli\npass123\npass123\n"
+		input := "testcli\npassword123\npassword123\n"
 		stdout, _ := runCLI(t, envs, input, "db-users-create")
 		if !strings.Contains(stdout, "username=testcli") {
 			t.Fatalf("expected testcli created, got: %s", stdout)

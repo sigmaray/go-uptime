@@ -1,4 +1,4 @@
-// Package server запускает HTTP-сервер приложения.
+// Package server starts the application HTTP server.
 package server
 
 import (
@@ -29,7 +29,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Run запускает HTTP-сервер с фоновым воркером мониторинга.
+// Run starts the HTTP server and background monitoring worker.
 func Run(cfg *config.Config, migrations embed.FS) {
 	_ = migrations
 
@@ -60,7 +60,7 @@ func Run(cfg *config.Config, migrations embed.FS) {
 	r.GET("/health", h.Health)
 
 	r.GET("/", func(c *gin.Context) {
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(`<!DOCTYPE html><html><head><title>Go Uptime</title></head><body><h1>Go Uptime <a href="/login">Login</a></h1></body></html>`))
+		c.Redirect(http.StatusFound, "/admin/")
 	})
 
 	r.GET("/login", h.LoginPage)
@@ -93,6 +93,9 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		admin.GET("/logs", h.LogsPage)
 		admin.GET("/requests", h.RequestsPage)
 
+		admin.GET("/settings", h.SettingsPage)
+		admin.POST("/settings", h.UpdateSettings)
+
 		admin.POST("/logout", h.Logout)
 
 		tools := admin.Group("/tools")
@@ -107,13 +110,6 @@ func Run(cfg *config.Config, migrations embed.FS) {
 			tools.POST("/test-error", h.ToolsTestError)
 			tools.POST("/test-log", h.ToolsTestLog)
 		}
-	}
-
-	app := r.Group("/app")
-	app.Use(middlewares.AuthRequired())
-	{
-		app.GET("/settings", h.SettingsPage)
-		app.POST("/settings", h.UpdateSettings)
 	}
 
 	if cfg.EnablePlaywrightAPI {
@@ -192,7 +188,6 @@ func loadHTMLTemplates(r *gin.Engine) *template.Template {
 	patterns := []string{
 		"templates/admin/*.html",
 		"templates/admin/*/*.html",
-		"templates/app/*/*.html",
 	}
 	for _, pattern := range patterns {
 		matches, err := filepath.Glob(pattern)

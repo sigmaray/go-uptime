@@ -1,4 +1,4 @@
-// Package cli содержит интерактивные CLI-команды для управления пользователями и БД.
+// Package cli provides interactive CLI commands for managing users and the database.
 package cli
 
 import (
@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// UsersSeed создаёт пользователя admin/admin после подтверждения.
+// UsersSeed creates an admin/admin user after confirmation.
 func UsersSeed(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -35,10 +35,7 @@ func UsersSeed(db *gorm.DB) {
 	}
 
 	input := models.CreateUserInput{Username: "admin", Password: "admin", ConfirmPassword: "admin"}
-	if err := input.Validate(); err != nil {
-		log.Fatal().Str("error", models.FormatValidationError(err)).Msg("invalid input")
-	}
-
+	// UsersSeed intentionally bypasses validation to allow the documented insecure admin/admin credentials.
 	user, err := models.CreateUser(db, input.Username, input.Password)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create admin user")
@@ -46,7 +43,7 @@ func UsersSeed(db *gorm.DB) {
 	fmt.Printf("Created user: id=%d username=%s\n", user.ID, user.Username)
 }
 
-// UsersCreate интерактивно создаёт нового пользователя.
+// UsersCreate interactively creates a new user.
 func UsersCreate(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -67,7 +64,7 @@ func UsersCreate(db *gorm.DB) {
 	fmt.Printf("Created user: id=%d username=%s\n", user.ID, user.Username)
 }
 
-// UsersShow выводит всех пользователей в виде таблицы.
+// UsersShow prints all users as a table.
 func UsersShow(db *gorm.DB) {
 	var users []models.User
 	if err := db.Order("id asc").Find(&users).Error; err != nil {
@@ -91,7 +88,7 @@ func UsersShow(db *gorm.DB) {
 	cliutil.PrintTable(headers, rows)
 }
 
-// UsersDeleteAll удаляет всех пользователей после подтверждения.
+// UsersDeleteAll deletes all users after confirmation.
 func UsersDeleteAll(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 

@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AuthRequired перенаправляет неавторизованных пользователей на страницу входа.
+// AuthRequired redirects unauthenticated users to the login page.
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)

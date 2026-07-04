@@ -1,4 +1,4 @@
-// Package models содержит GORM-модели и бизнес-логику работы с данными.
+// Package models contains GORM models and data access business logic.
 package models
 
 import (
@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// User — учётная запись администратора.
+// User is an administrator account.
 type User struct {
 	ID           uint `gorm:"primaryKey"`
 	CreatedAt    time.Time
@@ -17,7 +17,7 @@ type User struct {
 	PasswordHash string         `gorm:"not null"`
 }
 
-// MonitorURL — HTTP/HTTPS ресурс для мониторинга.
+// MonitorURL is an HTTP/HTTPS resource to monitor.
 type MonitorURL struct {
 	ID             uint `gorm:"primaryKey"`
 	CreatedAt      time.Time
@@ -32,7 +32,7 @@ type MonitorURL struct {
 	NotifySMTP     bool   `gorm:"not null;default:false"`
 }
 
-// Incident — период недоступности мониторируемого URL.
+// Incident is a period of downtime for a monitored URL.
 type Incident struct {
 	ID           uint `gorm:"primaryKey"`
 	CreatedAt    time.Time
@@ -44,17 +44,17 @@ type Incident struct {
 	ErrorMessage string     `gorm:"not null;default:''"`
 }
 
-// IsOpen возвращает true, если инцидент ещё не закрыт.
+// IsOpen returns true if the incident has not been resolved yet.
 func (i *Incident) IsOpen() bool {
 	return i.ResolvedAt == nil
 }
 
-// AppSetting — пара ключ-значение для настроек приложения в БД.
+// AppSetting is a key-value pair for application settings stored in the database.
 type AppSetting struct {
 	Key       string `gorm:"primaryKey"`
 	Value     string `gorm:"not null"`
 	UpdatedAt time.Time
 }
 
-// SettingCheckInterval — ключ настройки интервала проверки в секундах.
+// SettingCheckInterval is the app_settings key for the check interval in seconds.
 const SettingCheckInterval = "check_interval_seconds"
