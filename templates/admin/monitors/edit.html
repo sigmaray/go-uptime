@@ -9,6 +9,12 @@
         <label class="form-label" for="url">URL</label>
         <input type="url" class="form-control" id="url" name="url" value="{{ .Monitor.URL }}" required>
     </div>
+    <div class="mb-3">
+        <label class="form-label" for="check_interval_seconds">Check interval (seconds) <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="number" class="form-control" id="check_interval_seconds" name="check_interval_seconds"
+               value="{{ .Monitor.CheckIntervalSecondsFormValue }}" min="10" max="86400" aria-describedby="checkIntervalHelp">
+        <div id="checkIntervalHelp" class="form-text">Leave empty to use the global check interval from Settings.</div>
+    </div>
     {{ template "admin/monitors/notification_fields.html" . }}
     <button type="submit" class="btn btn-primary">Save</button>
     <a href="/admin/monitors" class="btn btn-link">Cancel</a>

@@ -112,12 +112,15 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 		return
 	}
 
+	checkInterval, _ := input.ParseCheckIntervalSeconds()
+
 	name := models.ResolveMonitorName(input.Name, input.URL)
 	monitor := models.MonitorURL{
-		Name:           name,
-		URL:            input.URL,
-		NotifyTelegram: input.NotifyTelegram,
-		NotifySMTP:     input.NotifySMTP,
+		Name:                 name,
+		URL:                  input.URL,
+		CheckIntervalSeconds: checkInterval,
+		NotifyTelegram:       input.NotifyTelegram,
+		NotifySMTP:           input.NotifySMTP,
 	}
 	if err := h.DB.Create(&monitor).Error; err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/new.html", gin.H{
@@ -240,6 +243,10 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	if err := input.Validate(); err != nil {
 		monitor.Name = input.Name
 		monitor.URL = input.URL
+		monitor.CheckIntervalSeconds = nil
+		if parsed, parseErr := input.ParseCheckIntervalSeconds(); parseErr == nil {
+			monitor.CheckIntervalSeconds = parsed
+		}
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
 			"Error":              models.FormatValidationError(err),
@@ -252,8 +259,11 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		return
 	}
 
+	checkInterval, _ := input.ParseCheckIntervalSeconds()
+
 	monitor.Name = models.ResolveMonitorName(input.Name, input.URL)
 	monitor.URL = input.URL
+	monitor.CheckIntervalSeconds = checkInterval
 	monitor.NotifyTelegram = input.NotifyTelegram
 	monitor.NotifySMTP = input.NotifySMTP
 	if err := h.DB.Save(&monitor).Error; err != nil {

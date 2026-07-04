@@ -12,7 +12,7 @@ import (
 
 // SettingsPage renders the monitoring settings page.
 func (h *Handler) SettingsPage(c *gin.Context) {
-	interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
+	interval := models.GetCheckIntervalSeconds(h.DB)
 	notifications, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
 		applog.AddError("failed to load notification settings", err.Error())
@@ -26,7 +26,7 @@ func (h *Handler) SettingsPage(c *gin.Context) {
 func (h *Handler) UpdateSettings(c *gin.Context) {
 	var input models.SettingsInput
 	if err := c.ShouldBind(&input); err != nil {
-		interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
+		interval := models.GetCheckIntervalSeconds(h.DB)
 		notifications, _ := models.LoadNotificationSettings(h.DB)
 		data := h.settingsPageData(interval, notifications)
 		data["Error"] = "Invalid form data"
@@ -37,7 +37,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		input.SMTPPort = 587
 	}
 	if err := input.Validate(); err != nil {
-		interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
+		interval := models.GetCheckIntervalSeconds(h.DB)
 		data := h.settingsPageData(interval, notificationSettingsFromInput(input))
 		data["Error"] = models.FormatValidationError(err)
 		h.renderPage(c, http.StatusBadRequest, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
@@ -45,7 +45,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	}
 
 	if err := models.SetCheckIntervalSeconds(h.DB, input.CheckIntervalSeconds); err != nil {
-		interval := models.GetCheckIntervalSeconds(h.DB, h.Config.CheckIntervalSeconds)
+		interval := models.GetCheckIntervalSeconds(h.DB)
 		data := h.settingsPageData(interval, notificationSettingsFromInput(input))
 		data["Error"] = "Failed to save settings"
 		h.renderPage(c, http.StatusInternalServerError, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})

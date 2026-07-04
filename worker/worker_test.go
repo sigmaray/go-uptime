@@ -1,6 +1,9 @@
 package worker
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestShouldNotifyStateChange(t *testing.T) {
 	up := true
@@ -57,4 +60,29 @@ func TestShouldNotifyStateChange(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsMonitorDue(t *testing.T) {
+	interval := time.Minute
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+
+	t.Run("never checked", func(t *testing.T) {
+		if !isMonitorDue(nil, interval, now) {
+			t.Fatal("expected first check to be due")
+		}
+	})
+
+	t.Run("interval not elapsed", func(t *testing.T) {
+		last := now.Add(-30 * time.Second)
+		if isMonitorDue(&last, interval, now) {
+			t.Fatal("expected monitor to be skipped")
+		}
+	})
+
+	t.Run("interval elapsed", func(t *testing.T) {
+		last := now.Add(-time.Minute)
+		if !isMonitorDue(&last, interval, now) {
+			t.Fatal("expected monitor to be due")
+		}
+	})
 }

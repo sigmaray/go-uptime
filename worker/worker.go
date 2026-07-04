@@ -21,10 +21,11 @@ const requestTimeout = 15 * time.Second
 
 // MonitorWorker periodically checks URLs from the database.
 type MonitorWorker struct {
-	db     *gorm.DB
-	cfg    *config.Config
-	client *http.Client
-	stop   chan struct{}
+	db                *gorm.DB
+	cfg               *config.Config
+	client            *http.Client
+	stop              chan struct{}
+	lastMaintenanceAt time.Time
 }
 
 // New creates a new background monitoring worker instance.
@@ -73,28 +74,23 @@ func (w *MonitorWorker) Stop() {
 }
 
 func (w *MonitorWorker) loop() {
-	interval := time.Duration(models.GetCheckIntervalSeconds(w.db, w.cfg.CheckIntervalSeconds)) * time.Second
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	w.runOnce()
+	w.runDueMonitors()
 
 	for {
 		select {
 		case <-ticker.C:
-			newInterval := time.Duration(models.GetCheckIntervalSeconds(w.db, w.cfg.CheckIntervalSeconds)) * time.Second
-			if newInterval != interval {
-				interval = newInterval
-				ticker.Reset(interval)
-			}
-			w.runOnce()
+			w.runDueMonitors()
 		case <-w.stop:
 			return
 		}
 	}
 }
 
-func (w *MonitorWorker) runOnce() {
+// runDueMonitors checks monitors whose individual interval has elapsed and runs periodic maintenance.
+func (w *MonitorWorker) runDueMonitors() {
 	var monitors []models.MonitorURL
 	if err := w.db.Find(&monitors).Error; err != nil {
 		log.Error().Err(err).Msg("failed to load monitor urls")
@@ -102,9 +98,38 @@ func (w *MonitorWorker) runOnce() {
 		return
 	}
 
+	now := time.Now()
+	globalIntervalSeconds := models.GetCheckIntervalSeconds(w.db)
+
 	for _, monitor := range monitors {
+		intervalSeconds := models.MonitorCheckIntervalSeconds(monitor, globalIntervalSeconds)
+		if !isMonitorDue(monitor.LastCheckedAt, time.Duration(intervalSeconds)*time.Second, now) {
+			continue
+		}
 		w.checkMonitor(monitor)
 	}
+
+	w.runMaintenanceIfDue(now)
+}
+
+// isMonitorDue reports whether a monitor should be checked at now based on its last check time.
+// lastCheckedAt is nil when the monitor has never been checked.
+// interval is the effective check interval for the monitor.
+// now is the current time used for the due calculation.
+func isMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Time) bool {
+	if lastCheckedAt == nil {
+		return true
+	}
+	return now.Sub(*lastCheckedAt) >= interval
+}
+
+// runMaintenanceIfDue prunes old records at most once per minute.
+// now is the current time used to throttle maintenance work.
+func (w *MonitorWorker) runMaintenanceIfDue(now time.Time) {
+	if !w.lastMaintenanceAt.IsZero() && now.Sub(w.lastMaintenanceAt) < time.Minute {
+		return
+	}
+	w.lastMaintenanceAt = now
 
 	if err := models.PruneIncidents(w.db, w.cfg.IncidentRetentionDays, w.cfg.MaxResolvedIncidentsPerMonitor); err != nil {
 		log.Error().Err(err).Msg("failed to prune incidents")

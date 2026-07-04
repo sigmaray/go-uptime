@@ -17,9 +17,6 @@ type Config struct {
 	SessionSecret string `envconfig:"GO_UPTIME_SESSION_SECRET" required:"true"`
 	SessionSecure bool   `envconfig:"GO_UPTIME_SESSION_SECURE" default:"false"`
 
-	// CheckIntervalSeconds is the default background URL check interval (overridden in the database).
-	CheckIntervalSeconds int `envconfig:"GO_UPTIME_CHECK_INTERVAL_SECONDS" default:"60"`
-
 	// IncidentRetentionDays is how many days to keep resolved incidents.
 	IncidentRetentionDays int `envconfig:"GO_UPTIME_INCIDENT_RETENTION_DAYS" default:"90"`
 

@@ -19,17 +19,18 @@ type User struct {
 
 // MonitorURL is an HTTP/HTTPS resource to monitor.
 type MonitorURL struct {
-	ID             uint `gorm:"primaryKey"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      gorm.DeletedAt `gorm:"index"`
-	Name           string         `gorm:"not null;default:''"`
-	URL            string         `gorm:"not null"`
-	IsUp           *bool
-	LastCheckedAt  *time.Time
-	LastError      string `gorm:"not null;default:''"`
-	NotifyTelegram bool   `gorm:"not null;default:false"`
-	NotifySMTP     bool   `gorm:"not null;default:false"`
+	ID                   uint `gorm:"primaryKey"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            gorm.DeletedAt `gorm:"index"`
+	Name                 string         `gorm:"not null;default:''"`
+	URL                  string         `gorm:"not null"`
+	IsUp                 *bool
+	LastCheckedAt        *time.Time
+	LastError            string `gorm:"not null;default:''"`
+	NotifyTelegram       bool   `gorm:"not null;default:false"`
+	NotifySMTP           bool   `gorm:"not null;default:false"`
+	CheckIntervalSeconds *int
 }
 
 // Incident is a period of downtime for a monitored URL.
@@ -58,3 +59,6 @@ type AppSetting struct {
 
 // SettingCheckInterval is the app_settings key for the check interval in seconds.
 const SettingCheckInterval = "check_interval_seconds"
+
+// DefaultCheckIntervalSeconds is used when no global check interval is stored in the database.
+const DefaultCheckIntervalSeconds = 60

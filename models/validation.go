@@ -70,7 +70,11 @@ func (input UpdateUserInput) Validate() error {
 
 // Validate validates MonitorURLInput.
 func (input MonitorURLInput) Validate() error {
-	return validate.Struct(input)
+	if err := validate.Struct(input); err != nil {
+		return err
+	}
+	_, err := input.ParseCheckIntervalSeconds()
+	return err
 }
 
 // Validate validates SettingsInput.
@@ -92,21 +96,25 @@ func FormatValidationError(err error) string {
 	return strings.Join(messages, "; ")
 }
 
-// GetCheckIntervalSeconds reads the check interval from the database or returns the default value.
-func GetCheckIntervalSeconds(db *gorm.DB, defaultSeconds int) int {
+// GetCheckIntervalSeconds reads the global check interval from app_settings.
+// db is the database handle used to load the setting.
+// When the setting is missing or invalid, DefaultCheckIntervalSeconds is returned.
+func GetCheckIntervalSeconds(db *gorm.DB) int {
 	var setting AppSetting
 	err := db.Where("key = ?", SettingCheckInterval).First(&setting).Error
 	if err != nil {
-		return defaultSeconds
+		return DefaultCheckIntervalSeconds
 	}
 	seconds, err := strconv.Atoi(setting.Value)
 	if err != nil || seconds < 10 {
-		return defaultSeconds
+		return DefaultCheckIntervalSeconds
 	}
 	return seconds
 }
 
-// SetCheckIntervalSeconds saves the check interval to the database.
+// SetCheckIntervalSeconds saves the global check interval to app_settings.
+// db is the database handle used for persistence.
+// seconds is the interval in seconds and must be validated by the caller.
 func SetCheckIntervalSeconds(db *gorm.DB, seconds int) error {
 	setting := AppSetting{
 		Key:   SettingCheckInterval,
