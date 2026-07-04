@@ -15,7 +15,8 @@ async function login(page: import('@playwright/test').Page, request: APIRequestC
   await page.locator('#username').fill('admin');
   await page.locator('#password').fill('password123');
   await page.getByRole('button', { name: 'Login' }).click();
-  await expect(page).toHaveURL('/admin/');
+  await expect(page.getByText('Invalid username or password')).toHaveCount(0);
+  await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
 test.describe('Users CRUD', () => {

@@ -49,7 +49,7 @@ var defaultLoginAttemptTracker = newLoginAttemptTracker()
 
 // AllowLoginAttempt reports whether another login attempt is allowed for clientIP.
 func AllowLoginAttempt(clientIP string) bool {
-	if os.Getenv("GO_UPTIME_TEST_DATABASE_NAME") != "" {
+	if os.Getenv("GO_UPTIME_ENABLE_PLAYWRIGHT_API") == "true" {
 		return true
 	}
 	return defaultLoginAttemptTracker.allow(clientIP, time.Now())
