@@ -1,0 +1,36 @@
+{{ define "admin/users/index.html" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Users</h2>
+    <a href="/admin/users/new" class="btn btn-primary">Create User</a>
+</div>
+<div class="table-responsive">
+    <table class="table table-striped users-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Login</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Users }}
+            <tr>
+                <td>{{ .ID }}</td>
+                <td>{{ .Username }}</td>
+                <td>{{ .CreatedAt.Format "2006-01-02 15:04" }}</td>
+                <td class="text-end">
+                    <a href="/admin/users/{{ .ID }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <form action="/admin/users/{{ .ID }}/delete" method="POST" class="d-inline" data-confirm-delete="Delete this user?">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="4" class="text-muted">No users found.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+<script src="/static/js/confirm-delete.js"></script>
+{{ end }}

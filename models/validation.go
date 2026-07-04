@@ -1,0 +1,119 @@
+package models
+
+import (
+	"errors"
+	"net/url"
+	"reflect"
+	"strconv"
+	"strings"
+
+	en "github.com/go-playground/locales/en"
+	ut "github.com/go-playground/universal-translator"
+	"github.com/go-playground/validator/v10"
+	en_translations "github.com/go-playground/validator/v10/translations/en"
+	"gorm.io/gorm"
+)
+
+var (
+	validate *validator.Validate
+	trans    ut.Translator
+)
+
+func init() {
+	validate = validator.New()
+
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get("label"), ",", 2)[0]
+		if name != "" {
+			return name
+		}
+		return fld.Name
+	})
+
+	_ = validate.RegisterValidation("monitor_url", validateMonitorURL)
+
+	english := en.New()
+	uni := ut.New(english, english)
+	trans, _ = uni.GetTranslator("en")
+	_ = en_translations.RegisterDefaultTranslations(validate, trans)
+}
+
+// validateMonitorURL проверяет, что URL использует схему http или https.
+func validateMonitorURL(fl validator.FieldLevel) bool {
+	raw := fl.Field().String()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
+// Validate проверяет CreateUserInput.
+func (input CreateUserInput) Validate() error {
+	return validate.Struct(input)
+}
+
+// Validate проверяет UpdateUserInput.
+func (input UpdateUserInput) Validate() error {
+	return validate.Struct(input)
+}
+
+// Validate проверяет MonitorURLInput.
+func (input MonitorURLInput) Validate() error {
+	return validate.Struct(input)
+}
+
+// Validate проверяет SettingsInput.
+func (input SettingsInput) Validate() error {
+	return validate.Struct(input)
+}
+
+// FormatValidationError преобразует ошибки валидатора в читаемую строку.
+func FormatValidationError(err error) string {
+	validationErrors, ok := err.(validator.ValidationErrors)
+	if !ok {
+		return err.Error()
+	}
+
+	messages := make([]string, 0, len(validationErrors))
+	for _, fieldErr := range validationErrors {
+		messages = append(messages, fieldErr.Translate(trans))
+	}
+	return strings.Join(messages, "; ")
+}
+
+// GetCheckIntervalSeconds читает интервал проверки из БД или возвращает значение по умолчанию.
+func GetCheckIntervalSeconds(db *gorm.DB, defaultSeconds int) int {
+	var setting AppSetting
+	err := db.Where("key = ?", SettingCheckInterval).First(&setting).Error
+	if err != nil {
+		return defaultSeconds
+	}
+	seconds, err := strconv.Atoi(setting.Value)
+	if err != nil || seconds < 10 {
+		return defaultSeconds
+	}
+	return seconds
+}
+
+// SetCheckIntervalSeconds сохраняет интервал проверки в БД.
+func SetCheckIntervalSeconds(db *gorm.DB, seconds int) error {
+	setting := AppSetting{
+		Key:   SettingCheckInterval,
+		Value: strconv.Itoa(seconds),
+	}
+	return db.Save(&setting).Error
+}
+
+// FindOpenIncident ищет открытый инцидент для указанного URL.
+func FindOpenIncident(db *gorm.DB, monitorURLID uint) (*Incident, error) {
+	var incident Incident
+	err := db.Where("monitor_url_id = ? AND resolved_at IS NULL", monitorURLID).First(&incident).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &incident, nil
+}

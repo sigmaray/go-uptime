@@ -1,0 +1,40 @@
+.admin-nav__brand {
+    font-weight: 600;
+}
+
+.admin-nav__username {
+    opacity: 0.9;
+}
+
+.dashboard-card__title {
+    margin-bottom: 0.5rem;
+}
+
+.dev-tools__sql {
+    font-family: monospace;
+}
+
+.log-table td {
+    vertical-align: top;
+}
+
+.uptime-history {
+    display: flex;
+    gap: 1px;
+    height: 1.25rem;
+    min-width: 8rem;
+    max-width: 12rem;
+}
+
+.uptime-history__bar {
+    flex: 1 1 0;
+    min-width: 2px;
+}
+
+.uptime-history__bar--up {
+    background-color: var(--bs-success);
+}
+
+.uptime-history__bar--down {
+    background-color: var(--bs-danger);
+}

@@ -1,0 +1,22 @@
+{{ define "admin/login/index.html" }}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card login-card shadow-sm">
+            <div class="card-body p-4">
+                <h1 class="h4 mb-4 login-card__title">Login</h1>
+                <form method="POST" action="/login">
+                    <div class="mb-3">
+                        <label class="form-label" for="username">Login</label>
+                        <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

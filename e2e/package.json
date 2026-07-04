@@ -1,0 +1,11 @@
+{
+  "name": "go-uptime-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "posttest": "docker compose -f ../docker-compose.with-infra.yml -p e2e-go-uptime down -v || true"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1"
+  }
+}

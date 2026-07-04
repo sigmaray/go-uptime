@@ -1,0 +1,22 @@
+{{ define "admin/errors/index.html" }}
+<h2 class="mb-4">Application Errors</h2>
+<p class="text-muted">Last 200 errors kept in memory.</p>
+<div class="table-responsive">
+    <table class="table table-sm table-striped log-table">
+        <thead>
+            <tr><th>Time</th><th>Message</th><th>Context</th></tr>
+        </thead>
+        <tbody>
+            {{ range .Entries }}
+            <tr>
+                <td class="text-nowrap">{{ .Time.Format "2006-01-02 15:04:05" }}</td>
+                <td>{{ .Message }}</td>
+                <td class="small text-muted">{{ .Fields }}</td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="3" class="text-muted">No errors recorded.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{ end }}

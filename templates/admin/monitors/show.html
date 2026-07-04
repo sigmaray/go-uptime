@@ -1,0 +1,77 @@
+{{ define "admin/monitors/show.html" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">{{ .DisplayName }}</h2>
+    <div class="d-flex gap-2">
+        <a href="/admin/monitors/{{ .Monitor.ID }}/edit" class="btn btn-outline-secondary">Edit</a>
+        <a href="/admin/monitors" class="btn btn-link">Back to Monitors</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <dl class="row mb-0 monitor-detail">
+            <dt class="col-sm-3">URL</dt>
+            <dd class="col-sm-9"><a href="{{ .Monitor.URL }}" target="_blank" rel="noopener">{{ .Monitor.URL }}</a></dd>
+
+            <dt class="col-sm-3">Status</dt>
+            <dd class="col-sm-9">
+                <span class="badge {{ monitorStatusClass .Monitor.IsUp .Monitor.LastCheckedAt }}">
+                    {{ monitorStatus .Monitor.IsUp .Monitor.LastCheckedAt }}
+                </span>
+            </dd>
+
+            <dt class="col-sm-3">Last Check</dt>
+            <dd class="col-sm-9">
+                {{ if .Monitor.LastCheckedAt }}{{ .Monitor.LastCheckedAt.Format "2006-01-02 15:04:05" }}{{ else }}—{{ end }}
+            </dd>
+
+            <dt class="col-sm-3">Last Error</dt>
+            <dd class="col-sm-9 text-danger">{{ if .Monitor.LastError }}{{ .Monitor.LastError }}{{ else }}—{{ end }}</dd>
+
+            <dt class="col-sm-3">Created</dt>
+            <dd class="col-sm-9">{{ .Monitor.CreatedAt.Format "2006-01-02 15:04:05" }}</dd>
+
+            <dt class="col-sm-3">Last 30 min</dt>
+            <dd class="col-sm-9">
+                {{ if .RecentChecks }}
+                <div class="uptime-history" title="Uptime history for the last 30 minutes" role="img" aria-label="Uptime history for the last 30 minutes">
+                    {{ range .RecentChecks }}
+                    <span class="uptime-history__bar{{ if .IsUp }} uptime-history__bar--up{{ else }} uptime-history__bar--down{{ end }}"></span>
+                    {{ end }}
+                </div>
+                {{ else }}
+                <span class="text-muted">No checks in the last 30 minutes.</span>
+                {{ end }}
+            </dd>
+        </dl>
+    </div>
+</div>
+
+<h3 class="h5 mb-3">Heartbeat History</h3>
+<div class="table-responsive">
+    <table class="table table-sm table-striped heartbeats-table">
+        <thead>
+            <tr>
+                <th>Checked At</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Heartbeats }}
+            <tr>
+                <td class="text-nowrap">{{ .CheckedAt.Format "2006-01-02 15:04:05" }}</td>
+                <td>
+                    {{ if .IsUp }}
+                    <span class="badge text-bg-success">Up</span>
+                    {{ else }}
+                    <span class="badge text-bg-danger">Down</span>
+                    {{ end }}
+                </td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="2" class="text-muted">No heartbeats recorded yet.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{ end }}

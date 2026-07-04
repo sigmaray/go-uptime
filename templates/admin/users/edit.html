@@ -1,0 +1,19 @@
+{{ define "admin/users/edit.html" }}
+<h2 class="mb-4">Edit User</h2>
+<form method="POST" action="/admin/users/{{ .User.ID }}" class="col-md-6">
+    <div class="mb-3">
+        <label class="form-label" for="username">Login</label>
+        <input type="text" class="form-control" id="username" name="username" value="{{ .User.Username }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="password">New Password</label>
+        <input type="password" class="form-control" id="password" name="password" placeholder="Leave blank to keep current">
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="confirm_password">Confirm Password</label>
+        <input type="password" class="form-control" id="confirm_password" name="confirm_password">
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/admin/users" class="btn btn-link">Cancel</a>
+</form>
+{{ end }}

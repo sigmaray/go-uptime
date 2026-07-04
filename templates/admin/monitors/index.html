@@ -1,0 +1,52 @@
+{{ define "admin/monitors/index.html" }}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Monitors</h2>
+    <a href="/admin/monitors/new" class="btn btn-primary">Add URL</a>
+</div>
+<div class="table-responsive">
+    <table class="table table-striped monitors-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Last 30 min</th>
+                <th>Status</th>
+                <th>Last Check</th>
+                <th>Error</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Monitors }}
+            <tr>
+                <td>
+                    <a href="/admin/monitors/{{ .ID }}">{{ if .Name }}{{ .Name }}{{ else }}—{{ end }}</a>
+                </td>
+                <td><a href="{{ .URL }}" target="_blank" rel="noopener">{{ .URL }}</a></td>
+                <td>
+                    {{ if .RecentChecks }}
+                    <div class="uptime-history" title="Uptime history for the last 30 minutes" role="img" aria-label="Uptime history for the last 30 minutes">
+                        {{ range .RecentChecks }}
+                        <span class="uptime-history__bar{{ if .IsUp }} uptime-history__bar--up{{ else }} uptime-history__bar--down{{ end }}"></span>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                </td>
+                <td><span class="badge {{ monitorStatusClass .IsUp .LastCheckedAt }}">{{ monitorStatus .IsUp .LastCheckedAt }}</span></td>
+                <td>{{ if .LastCheckedAt }}{{ .LastCheckedAt.Format "2006-01-02 15:04:05" }}{{ else }}—{{ end }}</td>
+                <td class="small text-danger">{{ .LastError }}</td>
+                <td class="text-end">
+                    <a href="/admin/monitors/{{ .ID }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <form action="/admin/monitors/{{ .ID }}/delete" method="POST" class="d-inline" data-confirm-delete="Delete this monitor?">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="7" class="text-muted">No monitors configured.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+<script src="/static/js/confirm-delete.js"></script>
+{{ end }}

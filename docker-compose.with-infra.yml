@@ -1,0 +1,37 @@
+# Full stack for local development, CI, and e2e tests.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: go-uptime-postgres
+    environment:
+      POSTGRES_USER: gouptime
+      POSTGRES_PASSWORD: test-uptime-db
+      POSTGRES_DB: ${GO_UPTIME_DATABASE_NAME:-gouptime}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gouptime -d ${GO_UPTIME_DATABASE_NAME:-gouptime}"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  app:
+    build: .
+    container_name: go-uptime-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GIN_MODE: release
+      GO_UPTIME_ENVIRONMENT: development
+      GO_UPTIME_HTTP_PORT: 8080
+      GO_UPTIME_SESSION_SECRET: ${GO_UPTIME_SESSION_SECRET:-test-session-secret}
+      GO_UPTIME_DATABASE_HOST: postgres
+      GO_UPTIME_DATABASE_PORT: 5432
+      GO_UPTIME_DATABASE_NAME: ${GO_UPTIME_DATABASE_NAME:-gouptime}
+      GO_UPTIME_DATABASE_USER: gouptime
+      GO_UPTIME_DATABASE_PASSWORD: test-uptime-db
+      GO_UPTIME_ENABLE_PLAYWRIGHT_API: ${GO_UPTIME_ENABLE_PLAYWRIGHT_API:-false}
+    ports:
+      - "18081:8080"

@@ -1,0 +1,35 @@
+{{ define "admin/heartbeats/index.html" }}
+<h2 class="mb-4">Heartbeats</h2>
+<p class="text-muted">Last {{ len .Heartbeats }} availability checks across all monitors.</p>
+<div class="table-responsive">
+    <table class="table table-sm table-striped heartbeats-table">
+        <thead>
+            <tr>
+                <th>Monitor</th>
+                <th>Checked At</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Heartbeats }}
+            <tr>
+                <td>
+                    <a href="/admin/monitors/{{ .MonitorURLID }}">{{ monitorDisplayName .MonitorURL }}</a>
+                    <span class="text-muted small d-block">{{ .MonitorURL.URL }}</span>
+                </td>
+                <td class="text-nowrap">{{ .CheckedAt.Format "2006-01-02 15:04:05" }}</td>
+                <td>
+                    {{ if .IsUp }}
+                    <span class="badge text-bg-success">Up</span>
+                    {{ else }}
+                    <span class="badge text-bg-danger">Down</span>
+                    {{ end }}
+                </td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="3" class="text-muted">No heartbeats recorded yet.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{ end }}

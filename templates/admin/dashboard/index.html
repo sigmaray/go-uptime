@@ -1,0 +1,32 @@
+{{ define "admin/dashboard/index.html" }}
+<h2 class="mb-4">Admin Dashboard</h2>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card dashboard-card h-100">
+            <div class="card-body">
+                <h3 class="h5 dashboard-card__title">Users</h3>
+                <p class="dashboard-card__text">Manage administrator accounts.</p>
+                <a href="/admin/users" class="btn btn-primary btn-sm">Open</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card dashboard-card h-100">
+            <div class="card-body">
+                <h3 class="h5 dashboard-card__title">Monitors</h3>
+                <p class="dashboard-card__text">Configure HTTP/HTTPS URLs to check.</p>
+                <a href="/admin/monitors" class="btn btn-primary btn-sm">Open</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card dashboard-card h-100">
+            <div class="card-body">
+                <h3 class="h5 dashboard-card__title">Incidents</h3>
+                <p class="dashboard-card__text">View downtime history.</p>
+                <a href="/admin/incidents" class="btn btn-primary btn-sm">Open</a>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

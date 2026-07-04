@@ -1,0 +1,51 @@
+{{ define "admin/tools/index.html" }}
+<h2 class="mb-4">Development Tools</h2>
+<p class="text-warning">Available only in development mode.</p>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Clear Table</h3>
+                <div class="mb-3">
+                    <label class="form-label" for="clear-table-select">Table</label>
+                    <select id="clear-table-select" class="form-select">
+                        {{ range .Tables }}
+                        <option value="{{ . }}">{{ . }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+                <button type="button" class="btn btn-danger btn-sm" data-dev-tools-clear-table>Clear table</button>
+                <div class="mt-2 small text-muted" data-dev-tools-clear-result></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Seed Monitor URLs</h3>
+                <p class="small text-muted">Creates example.com monitors if they do not exist.</p>
+                <button type="button" class="btn btn-secondary btn-sm" data-dev-tools-seed-monitors>Seed URLs</button>
+                <div class="mt-2 small text-muted" data-dev-tools-seed-result></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Execute SQL</h3>
+                <div class="mb-3">
+                    <label class="form-label" for="sql-query">Query</label>
+                    <textarea id="sql-query" class="form-control dev-tools__sql" rows="4" placeholder="SELECT * FROM users LIMIT 10"></textarea>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" data-dev-tools-execute-sql>Run query</button>
+                <div class="mt-3" data-dev-tools-sql-result></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/admin-tools.js"></script>
+{{ end }}

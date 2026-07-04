@@ -1,0 +1,19 @@
+{{ define "admin/users/new.html" }}
+<h2 class="mb-4">Create User</h2>
+<form method="POST" action="/admin/users" class="col-md-6">
+    <div class="mb-3">
+        <label class="form-label" for="username">Login</label>
+        <input type="text" class="form-control" id="username" name="username" value="{{ .Username }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="password">Password</label>
+        <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="confirm_password">Confirm Password</label>
+        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Create</button>
+    <a href="/admin/users" class="btn btn-link">Cancel</a>
+</form>
+{{ end }}

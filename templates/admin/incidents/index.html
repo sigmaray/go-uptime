@@ -1,0 +1,44 @@
+{{ define "admin/incidents/index.html" }}
+<h2 class="mb-4">Incidents</h2>
+<div class="table-responsive">
+    <table class="table table-striped incidents-table">
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>Started</th>
+                <th>Resolved</th>
+                <th>Duration</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Incidents }}
+            <tr>
+                <td>
+                    {{ if .MonitorURL.Name }}{{ .MonitorURL.Name }} — {{ end }}
+                    <a href="{{ .MonitorURL.URL }}" target="_blank" rel="noopener">{{ .MonitorURL.URL }}</a>
+                </td>
+                <td>{{ .StartedAt.Format "2006-01-02 15:04:05" }}</td>
+                <td>
+                    {{ if .ResolvedAt }}
+                        {{ .ResolvedAt.Format "2006-01-02 15:04:05" }}
+                    {{ else }}
+                        <span class="badge text-bg-danger">Open</span>
+                    {{ end }}
+                </td>
+                <td>
+                    {{ if .ResolvedAt }}
+                        {{ .ResolvedAt.Sub .StartedAt }}
+                    {{ else }}
+                        ongoing
+                    {{ end }}
+                </td>
+                <td class="small text-danger">{{ .ErrorMessage }}</td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="5" class="text-muted">No incidents recorded.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{ end }}
