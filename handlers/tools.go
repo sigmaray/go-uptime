@@ -145,9 +145,9 @@ func (h *Handler) ToolsTestError(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// ToolsTestLog добавляет тестовую запись лога в память (только development).
+// ToolsTestLog добавляет тестовое событие приложения в память (только development).
 func (h *Handler) ToolsTestLog(c *gin.Context) {
-	message := fmt.Sprintf("test log entry from dev tools at %s", time.Now().Format(time.RFC3339))
-	applog.AddLog("info", message, "source=dev-tools")
+	message := fmt.Sprintf("test event from dev tools at %s", time.Now().Format(time.RFC3339))
+	applog.AddEvent("dev-tools", message)
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": message})
 }

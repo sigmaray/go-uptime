@@ -177,21 +177,22 @@ test.describe('Heartbeats', () => {
     await apiCall(request, 'clear-table', { table: 'monitor_urls' });
   });
 
-  test('lists heartbeats from all monitors', async ({ page, request }) => {
+  test('lists heartbeats from all monitors with response time', async ({ page, request }) => {
     await page.goto('/admin/monitors/new');
     await page.locator('#name').fill('HB One');
     await page.locator('#url').fill('https://hb-one.example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
     await apiCall(request, 'sql', {
-      query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up)
-              SELECT id, NOW(), true FROM monitor_urls WHERE url = 'https://hb-one.example.com'`,
+      query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up, response_time_ms)
+              SELECT id, NOW(), true, 42 FROM monitor_urls WHERE url = 'https://hb-one.example.com'`,
     });
 
     await page.goto('/admin/heartbeats');
     await expect(page.getByRole('heading', { name: 'Heartbeats' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'HB One' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Up', exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: '42 ms' })).toBeVisible();
   });
 });
 
@@ -200,27 +201,28 @@ test.describe('Application logs', () => {
     await login(page, request);
   });
 
-  test('shows zerolog entries including HTTP access logs', async ({ page }) => {
+  test('shows application events instead of HTTP access logs', async ({ page }) => {
     await page.goto('/admin/tools');
-    await page.getByRole('button', { name: 'Generate test log' }).click();
-    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+    await page.getByRole('button', { name: 'Generate test event' }).click();
+    await expect(page.getByText(/Test event recorded:/)).toBeVisible();
 
     await page.goto('/admin/logs');
     await expect(page.getByRole('heading', { name: 'Application Logs' })).toBeVisible();
-    await expect(page.locator('.log-table tbody').getByText('test log entry from dev tools')).toBeVisible();
+    await expect(page.locator('.log-table tbody').getByText('test event from dev tools')).toBeVisible();
+    await expect(page.locator('.log-table tbody').getByText('GET /admin/logs')).not.toBeVisible();
   });
 
-  test('shows newest log entries first', async ({ page }) => {
+  test('shows newest events first', async ({ page }) => {
     await page.goto('/admin/tools');
-    await page.getByRole('button', { name: 'Generate test log' }).click();
-    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+    await page.getByRole('button', { name: 'Generate test event' }).click();
+    await expect(page.getByText(/Test event recorded:/)).toBeVisible();
 
     await page.goto('/admin/tools');
-    await page.getByRole('button', { name: 'Generate test log' }).click();
-    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+    await page.getByRole('button', { name: 'Generate test event' }).click();
+    await expect(page.getByText(/Test event recorded:/)).toBeVisible();
 
     await page.goto('/admin/logs');
-    const testRows = page.locator('.log-table tbody tr', { hasText: 'test log entry from dev tools' });
+    const testRows = page.locator('.log-table tbody tr', { hasText: 'test event from dev tools' });
     await expect(testRows.first()).toBeVisible();
     const count = await testRows.count();
     expect(count).toBeGreaterThanOrEqual(2);
@@ -232,6 +234,18 @@ test.describe('Application logs', () => {
     for (let i = 0; i < times.length - 1; i++) {
       expect(times[i] >= times[i + 1]).toBeTruthy();
     }
+  });
+});
+
+test.describe('Monitor requests', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await login(page, request);
+  });
+
+  test('shows in-memory monitor HTTP requests newest first', async ({ page }) => {
+    await page.goto('/admin/requests');
+    await expect(page.getByRole('heading', { name: 'Monitor Requests' })).toBeVisible();
+    await expect(page.locator('.requests-table tbody')).toBeVisible();
   });
 });
 

@@ -130,7 +130,7 @@
       const result = document.querySelector('[data-dev-tools-record-result]');
       try {
         const data = await postJSON('/admin/tools/test-log');
-        showMessage(result, `Test log recorded: ${data.message}`, false);
+        showMessage(result, `Test event recorded: ${data.message}`, false);
       } catch (err) {
         showMessage(result, err.message, true);
       }

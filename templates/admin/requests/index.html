@@ -1,0 +1,48 @@
+{{ define "admin/requests/index.html" }}
+<h2 class="mb-4">Monitor Requests</h2>
+<p class="text-muted">Last 200 HTTP requests to monitored sites kept in memory.</p>
+<div class="table-responsive">
+    <table class="table table-sm table-striped requests-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Monitor</th>
+                <th>Status</th>
+                <th>Response Time</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ range .Entries }}
+            <tr>
+                <td class="text-nowrap">{{ .Time.Format "2006-01-02 15:04:05" }}</td>
+                <td>
+                    {{ .MonitorName }}
+                    <span class="text-muted small d-block">{{ .URL }}</span>
+                </td>
+                <td>
+                    {{ if gt .StatusCode 0 }}
+                    <span class="badge text-bg-secondary">{{ .StatusCode }}</span>
+                    {{ else }}
+                    <span class="text-muted">—</span>
+                    {{ end }}
+                </td>
+                <td class="text-nowrap">{{ .ResponseTimeMs }} ms</td>
+                <td>
+                    {{ if .IsUp }}
+                    <span class="badge text-bg-success">Up</span>
+                    {{ else }}
+                    <span class="badge text-bg-danger">Down</span>
+                    {{ if .Error }}
+                    <span class="text-danger small d-block">{{ .Error }}</span>
+                    {{ end }}
+                    {{ end }}
+                </td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="5" class="text-muted">No monitor requests recorded yet.</td></tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>
+{{ end }}

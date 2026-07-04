@@ -20,6 +20,42 @@ func TestRecentLogsNewestFirst(t *testing.T) {
 	}
 }
 
+func TestRecentEventsNewestFirst(t *testing.T) {
+	resetForTest()
+
+	AddEvent("monitor", "older event")
+	AddEvent("monitor", "newer event")
+
+	events := RecentEvents()
+	if len(events) != 2 {
+		t.Fatalf("RecentEvents() len = %d, want 2", len(events))
+	}
+	if events[0].Message != "newer event" {
+		t.Fatalf("RecentEvents()[0] = %q, want %q", events[0].Message, "newer event")
+	}
+	if events[1].Message != "older event" {
+		t.Fatalf("RecentEvents()[1] = %q, want %q", events[1].Message, "older event")
+	}
+}
+
+func TestRecentMonitorRequestsNewestFirst(t *testing.T) {
+	resetForTest()
+
+	AddMonitorRequest("one", "https://one.example", 200, 10, true, "")
+	AddMonitorRequest("two", "https://two.example", 500, 20, false, "server error")
+
+	requests := RecentMonitorRequests()
+	if len(requests) != 2 {
+		t.Fatalf("RecentMonitorRequests() len = %d, want 2", len(requests))
+	}
+	if requests[0].MonitorName != "two" {
+		t.Fatalf("RecentMonitorRequests()[0].MonitorName = %q, want two", requests[0].MonitorName)
+	}
+	if requests[1].MonitorName != "one" {
+		t.Fatalf("RecentMonitorRequests()[1].MonitorName = %q, want one", requests[1].MonitorName)
+	}
+}
+
 func TestRecentLogsStoresZerologEntriesSeparatelyFromEvents(t *testing.T) {
 	resetForTest()
 
@@ -47,9 +83,12 @@ func resetForTest() {
 	logMu.Lock()
 	errorMu.Lock()
 	eventMu.Lock()
+	requestMu.Lock()
 	logs = nil
 	appErrors = nil
 	events = nil
+	requests = nil
+	requestMu.Unlock()
 	eventMu.Unlock()
 	errorMu.Unlock()
 	logMu.Unlock()

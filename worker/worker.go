@@ -126,28 +126,46 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
+	displayName := models.MonitorDisplayName(monitor)
+	start := time.Now()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, monitor.URL, nil)
 	if err != nil {
-		w.markDown(monitor, err.Error())
+		elapsed := time.Since(start).Milliseconds()
+		w.recordMonitorRequest(displayName, monitor.URL, 0, elapsed, false, err.Error())
+		w.markDown(monitor, err.Error(), intPtr(int(elapsed)))
 		return
 	}
 	req.Header.Set("User-Agent", "go-uptime-monitor/1.0")
 
 	resp, err := w.client.Do(req)
+	elapsed := time.Since(start).Milliseconds()
 	now := time.Now()
 	if err != nil {
-		w.markDown(monitor, err.Error())
+		w.recordMonitorRequest(displayName, monitor.URL, 0, elapsed, false, err.Error())
+		w.markDown(monitor, err.Error(), intPtr(int(elapsed)))
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		w.markDown(monitor, fmt.Sprintf("unexpected status code: %d", resp.StatusCode))
+		errMsg := fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
+		w.recordMonitorRequest(displayName, monitor.URL, resp.StatusCode, elapsed, false, errMsg)
+		w.markDown(monitor, errMsg, intPtr(int(elapsed)))
 		return
 	}
 
-	w.markUp(monitor, now)
+	w.recordMonitorRequest(displayName, monitor.URL, resp.StatusCode, elapsed, true, "")
+	w.markUp(monitor, now, intPtr(int(elapsed)))
+}
+
+func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
+	applog.AddMonitorRequest(monitorName, url, statusCode, responseTimeMs, isUp, errMsg)
+}
+
+func intPtr(v int) *int {
+	return &v
 }
 
 // shouldNotifyStateChange reports whether a status transition should trigger alerts.
@@ -159,7 +177,7 @@ func shouldNotifyStateChange(previous *bool, nowUp bool) bool {
 	return *previous != nowUp
 }
 
-func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time) {
+func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time, responseTimeMs *int) {
 	wasDown := shouldNotifyStateChange(monitor.IsUp, true)
 
 	updates := map[string]interface{}{
@@ -172,7 +190,7 @@ func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time) {
 		return
 	}
 
-	w.recordCheck(monitor.ID, checkedAt, true)
+	w.recordCheck(monitor.ID, checkedAt, true, responseTimeMs)
 
 	openIncident, err := models.FindOpenIncident(w.db, monitor.ID)
 	if err != nil {
@@ -192,7 +210,7 @@ func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time) {
 	}
 }
 
-func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string) {
+func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string, responseTimeMs *int) {
 	wasUp := shouldNotifyStateChange(monitor.IsUp, false)
 	now := time.Now()
 	updates := map[string]interface{}{
@@ -205,7 +223,7 @@ func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string) {
 		return
 	}
 
-	w.recordCheck(monitor.ID, now, false)
+	w.recordCheck(monitor.ID, now, false, responseTimeMs)
 
 	openIncident, err := models.FindOpenIncident(w.db, monitor.ID)
 	if err != nil {
@@ -231,8 +249,8 @@ func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string) {
 	}
 }
 
-func (w *MonitorWorker) recordCheck(monitorID uint, checkedAt time.Time, isUp bool) {
-	if err := models.RecordMonitorCheck(w.db, monitorID, checkedAt, isUp); err != nil {
+func (w *MonitorWorker) recordCheck(monitorID uint, checkedAt time.Time, isUp bool, responseTimeMs *int) {
+	if err := models.RecordMonitorCheck(w.db, monitorID, checkedAt, isUp, responseTimeMs); err != nil {
 		log.Error().Err(err).Uint("monitor_id", monitorID).Msg("failed to record monitor check")
 	}
 }

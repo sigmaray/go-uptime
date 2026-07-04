@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -90,6 +91,7 @@ func Run(cfg *config.Config, migrations embed.FS) {
 
 		admin.GET("/errors", h.ErrorsPage)
 		admin.GET("/logs", h.LogsPage)
+		admin.GET("/requests", h.RequestsPage)
 
 		admin.POST("/logout", h.Logout)
 
@@ -183,6 +185,7 @@ func loadHTMLTemplates(r *gin.Engine) *template.Template {
 		"monitorDisplayName":  models.MonitorDisplayName,
 		"formatUptimePercent": models.FormatUptimePercent,
 		"uptimePercentClass":  uptimePercentClass,
+		"formatResponseTime":  formatResponseTime,
 	}
 
 	files := []string{"templates/admin/layout.html"}
@@ -225,6 +228,14 @@ func monitorStatusClass(isUp *bool, lastChecked *time.Time) string {
 		return "text-bg-success"
 	}
 	return "text-bg-danger"
+}
+
+// formatResponseTime renders a stored response time in milliseconds for templates.
+func formatResponseTime(ms *int) string {
+	if ms == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%d ms", *ms)
 }
 
 // uptimePercentClass returns a Bootstrap text color class for an uptime percentage value.

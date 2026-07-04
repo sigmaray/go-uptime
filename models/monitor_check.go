@@ -24,11 +24,12 @@ const (
 
 // MonitorCheck stores the result of a single HTTP availability check.
 type MonitorCheck struct {
-	ID           uint       `gorm:"primaryKey"`
-	MonitorURLID uint       `gorm:"not null;index"`
-	MonitorURL   MonitorURL `gorm:"foreignKey:MonitorURLID"`
-	CheckedAt    time.Time
-	IsUp         bool `gorm:"not null"`
+	ID             uint       `gorm:"primaryKey"`
+	MonitorURLID   uint       `gorm:"not null;index"`
+	MonitorURL     MonitorURL `gorm:"foreignKey:MonitorURLID"`
+	CheckedAt      time.Time
+	IsUp           bool `gorm:"not null"`
+	ResponseTimeMs *int
 }
 
 // DefaultMonitorName returns the site hostname from rawURL when no display name is provided.
@@ -60,15 +61,16 @@ func ResolveMonitorName(name, rawURL string) string {
 }
 
 // RecordMonitorCheck persists one check result for uptime history and updates aggregated uptime stats.
-func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bool) error {
+func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bool, responseTimeMs *int) error {
 	if err := UpdateUptimeStats(db, monitorID, checkedAt, isUp); err != nil {
 		return err
 	}
 
 	check := MonitorCheck{
-		MonitorURLID: monitorID,
-		CheckedAt:    checkedAt,
-		IsUp:         isUp,
+		MonitorURLID:   monitorID,
+		CheckedAt:      checkedAt,
+		IsUp:           isUp,
+		ResponseTimeMs: responseTimeMs,
 	}
 	return db.Create(&check).Error
 }

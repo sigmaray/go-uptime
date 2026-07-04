@@ -15,9 +15,9 @@ func (h *Handler) ErrorsPage(c *gin.Context) {
 	}, PageOptions{Title: "Errors", ActiveNav: "errors"})
 }
 
-// LogsPage renders the last in-memory zerolog entries.
+// LogsPage renders significant application events kept in memory.
 func (h *Handler) LogsPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/logs/index.html", gin.H{
-		"Entries": applog.RecentLogs(),
+		"Entries": applog.RecentEvents(),
 	}, PageOptions{Title: "Logs", ActiveNav: "logs"})
 }
