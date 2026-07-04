@@ -59,8 +59,12 @@ func ResolveMonitorName(name, rawURL string) string {
 	return DefaultMonitorName(rawURL)
 }
 
-// RecordMonitorCheck persists one check result for uptime history.
+// RecordMonitorCheck persists one check result for uptime history and updates aggregated uptime stats.
 func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bool) error {
+	if err := UpdateUptimeStats(db, monitorID, checkedAt, isUp); err != nil {
+		return err
+	}
+
 	check := MonitorCheck{
 		MonitorURLID: monitorID,
 		CheckedAt:    checkedAt,

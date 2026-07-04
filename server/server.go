@@ -174,9 +174,11 @@ func (applogHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 
 func loadHTMLTemplates(r *gin.Engine) *template.Template {
 	funcMap := template.FuncMap{
-		"monitorStatus":      monitorStatusLabel,
-		"monitorStatusClass": monitorStatusClass,
-		"monitorDisplayName": models.MonitorDisplayName,
+		"monitorStatus":       monitorStatusLabel,
+		"monitorStatusClass":  monitorStatusClass,
+		"monitorDisplayName":  models.MonitorDisplayName,
+		"formatUptimePercent": models.FormatUptimePercent,
+		"uptimePercentClass":  uptimePercentClass,
 	}
 
 	files := []string{"templates/admin/layout.html"}
@@ -219,4 +221,20 @@ func monitorStatusClass(isUp *bool, lastChecked *time.Time) string {
 		return "text-bg-success"
 	}
 	return "text-bg-danger"
+}
+
+// uptimePercentClass returns a Bootstrap text color class for an uptime percentage value.
+func uptimePercentClass(summary models.UptimeSummary) string {
+	if !summary.HasData() {
+		return "text-muted"
+	}
+	pct := summary.Percent()
+	switch {
+	case pct >= 99:
+		return "text-success"
+	case pct >= 95:
+		return "text-warning"
+	default:
+		return "text-danger"
+	}
 }

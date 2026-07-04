@@ -93,6 +93,9 @@ func RunGormAutoMigrate(cfg config.DatabaseConfig) {
 		&models.MonitorCheck{},
 		&models.Incident{},
 		&models.AppSetting{},
+		&models.StatMinutely{},
+		&models.StatHourly{},
+		&models.StatDaily{},
 	); err != nil {
 		log.Fatal().Err(err).Msg("failed to auto-migrate")
 	}

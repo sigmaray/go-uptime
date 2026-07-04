@@ -33,15 +33,33 @@
 
             <dt class="col-sm-3">Last 30 min</dt>
             <dd class="col-sm-9">
-                {{ if .RecentChecks }}
+                {{ if .HistoryBars }}
                 <div class="uptime-history" title="Uptime history for the last 30 minutes" role="img" aria-label="Uptime history for the last 30 minutes">
-                    {{ range .RecentChecks }}
-                    <span class="uptime-history__bar{{ if .IsUp }} uptime-history__bar--up{{ else }} uptime-history__bar--down{{ end }}"></span>
+                    {{ range .HistoryBars }}
+                    <span class="uptime-history__bar uptime-history__bar--{{ .State }}" title="{{ .Title }}"></span>
                     {{ end }}
                 </div>
                 {{ else }}
                 <span class="text-muted">No checks in the last 30 minutes.</span>
                 {{ end }}
+            </dd>
+
+            <dt class="col-sm-3">Uptime</dt>
+            <dd class="col-sm-9">
+                <div class="uptime-stats">
+                    <span class="uptime-stats__item">
+                        <span class="uptime-stats__label">24h</span>
+                        <span class="{{ uptimePercentClass .Uptime.Hours24 }}">{{ formatUptimePercent .Uptime.Hours24 }}</span>
+                    </span>
+                    <span class="uptime-stats__item">
+                        <span class="uptime-stats__label">30d</span>
+                        <span class="{{ uptimePercentClass .Uptime.Days30 }}">{{ formatUptimePercent .Uptime.Days30 }}</span>
+                    </span>
+                    <span class="uptime-stats__item">
+                        <span class="uptime-stats__label">1y</span>
+                        <span class="{{ uptimePercentClass .Uptime.Year1 }}">{{ formatUptimePercent .Uptime.Year1 }}</span>
+                    </span>
+                </div>
             </dd>
         </dl>
     </div>

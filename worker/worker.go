@@ -46,7 +46,24 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 
 // Start запускает цикл проверок в отдельной горутине.
 func (w *MonitorWorker) Start() {
+	go w.backfillUptimeStatsIfNeeded()
 	go w.loop()
+}
+
+func (w *MonitorWorker) backfillUptimeStatsIfNeeded() {
+	var count int64
+	if err := w.db.Model(&models.StatMinutely{}).Count(&count).Error; err != nil {
+		log.Error().Err(err).Msg("failed to count uptime stats")
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	if err := models.BackfillUptimeStats(w.db); err != nil {
+		log.Error().Err(err).Msg("failed to backfill uptime stats")
+		applog.AddError("failed to backfill uptime stats", err.Error())
+	}
 }
 
 // Stop останавливает воркер.
@@ -96,6 +113,11 @@ func (w *MonitorWorker) runOnce() {
 	if err := models.PruneMonitorChecks(w.db); err != nil {
 		log.Error().Err(err).Msg("failed to prune monitor checks")
 		applog.AddError("failed to prune monitor checks", err.Error())
+	}
+
+	if err := models.PruneUptimeStats(w.db); err != nil {
+		log.Error().Err(err).Msg("failed to prune uptime stats")
+		applog.AddError("failed to prune uptime stats", err.Error())
 	}
 }
 

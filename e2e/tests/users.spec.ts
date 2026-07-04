@@ -77,11 +77,64 @@ test.describe('Monitors', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     await apiCall(request, 'sql', {
-      query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up)
-              SELECT id, NOW(), true FROM monitor_urls WHERE url = 'https://example.com'`,
+      query: `INSERT INTO stat_minutely (monitor_url_id, bucket_at, up_seconds, total_seconds)
+              SELECT id, date_trunc('minute', NOW()), 60, 60
+              FROM monitor_urls WHERE url = 'https://example.com'`,
     });
 
     await page.goto('/admin/monitors');
+    await expect(page.locator('.uptime-history__bar--up')).toBeVisible();
+  });
+
+  test('shows uptime percentage stats', async ({ page, request }) => {
+    await page.goto('/admin/monitors/new');
+    await page.locator('#url').fill('https://uptime.example.com');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `UPDATE monitor_urls SET created_at = NOW() - INTERVAL '25 hours'
+              WHERE url = 'https://uptime.example.com'`,
+    });
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO stat_minutely (monitor_url_id, bucket_at, up_seconds, total_seconds)
+              SELECT id, date_trunc('minute', NOW()), 3500, 3600
+              FROM monitor_urls WHERE url = 'https://uptime.example.com'`,
+    });
+
+    await page.goto('/admin/monitors');
+    await expect(page.getByText('97.22%')).toBeVisible();
+  });
+
+  test('hides uptime percentages for monitors younger than reporting period', async ({ page, request }) => {
+    await page.goto('/admin/monitors/new');
+    await page.locator('#url').fill('https://young.example.com');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO stat_minutely (monitor_url_id, bucket_at, up_seconds, total_seconds)
+              SELECT id, date_trunc('minute', NOW()), 0, 60
+              FROM monitor_urls WHERE url = 'https://young.example.com'`,
+    });
+
+    await page.goto('/admin/monitors');
+    const row = page.getByRole('row', { name: /young\.example\.com/ });
+    await expect(row.getByText('0.00%')).toHaveCount(0);
+    await expect(row.locator('.uptime-stats__item').filter({ hasText: '24h' }).getByText('—')).toBeVisible();
+  });
+
+  test('shows no-data bars before monitor creation', async ({ page, request }) => {
+    await page.goto('/admin/monitors/new');
+    await page.locator('#url').fill('https://recent.example.com');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO stat_minutely (monitor_url_id, bucket_at, up_seconds, total_seconds)
+              SELECT id, date_trunc('minute', NOW()), 60, 60
+              FROM monitor_urls WHERE url = 'https://recent.example.com'`,
+    });
+
+    await page.goto('/admin/monitors');
+    await expect(page.locator('.uptime-history__bar--nodata').first()).toBeVisible();
     await expect(page.locator('.uptime-history__bar--up')).toBeVisible();
   });
 

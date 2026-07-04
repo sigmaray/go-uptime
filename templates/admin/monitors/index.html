@@ -10,6 +10,7 @@
                 <th>Name</th>
                 <th>URL</th>
                 <th>Last 30 min</th>
+                <th>Uptime</th>
                 <th>Status</th>
                 <th>Last Check</th>
                 <th>Error</th>
@@ -24,13 +25,29 @@
                 </td>
                 <td><a href="{{ .URL }}" target="_blank" rel="noopener">{{ .URL }}</a></td>
                 <td>
-                    {{ if .RecentChecks }}
+                    {{ if .HistoryBars }}
                     <div class="uptime-history" title="Uptime history for the last 30 minutes" role="img" aria-label="Uptime history for the last 30 minutes">
-                        {{ range .RecentChecks }}
-                        <span class="uptime-history__bar{{ if .IsUp }} uptime-history__bar--up{{ else }} uptime-history__bar--down{{ end }}"></span>
+                        {{ range .HistoryBars }}
+                        <span class="uptime-history__bar uptime-history__bar--{{ .State }}" title="{{ .Title }}"></span>
                         {{ end }}
                     </div>
                     {{ end }}
+                </td>
+                <td>
+                    <div class="uptime-stats">
+                        <span class="uptime-stats__item">
+                            <span class="uptime-stats__label">24h</span>
+                            <span class="{{ uptimePercentClass .Uptime.Hours24 }}">{{ formatUptimePercent .Uptime.Hours24 }}</span>
+                        </span>
+                        <span class="uptime-stats__item">
+                            <span class="uptime-stats__label">30d</span>
+                            <span class="{{ uptimePercentClass .Uptime.Days30 }}">{{ formatUptimePercent .Uptime.Days30 }}</span>
+                        </span>
+                        <span class="uptime-stats__item">
+                            <span class="uptime-stats__label">1y</span>
+                            <span class="{{ uptimePercentClass .Uptime.Year1 }}">{{ formatUptimePercent .Uptime.Year1 }}</span>
+                        </span>
+                    </div>
                 </td>
                 <td><span class="badge {{ monitorStatusClass .IsUp .LastCheckedAt }}">{{ monitorStatus .IsUp .LastCheckedAt }}</span></td>
                 <td>{{ if .LastCheckedAt }}{{ .LastCheckedAt.Format "2006-01-02 15:04:05" }}{{ else }}—{{ end }}</td>
@@ -43,7 +60,7 @@
                 </td>
             </tr>
             {{ else }}
-            <tr><td colspan="7" class="text-muted">No monitors configured.</td></tr>
+            <tr><td colspan="8" class="text-muted">No monitors configured.</td></tr>
             {{ end }}
         </tbody>
     </table>

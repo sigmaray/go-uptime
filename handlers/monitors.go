@@ -15,7 +15,8 @@ import (
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
 type MonitorListItem struct {
 	models.MonitorURL
-	RecentChecks []models.MonitorCheck
+	HistoryBars []models.UptimeHistoryBar
+	Uptime      models.MonitorUptime
 }
 
 // MonitorsList отображает список мониторируемых URL со статусом.
@@ -23,18 +24,33 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	var monitors []models.MonitorURL
 	h.DB.Order("created_at desc").Find(&monitors)
 
-	since := time.Now().Add(-30 * time.Minute)
-	checksByMonitor, err := models.LoadMonitorChecksSince(h.DB, since)
+	now := time.Now()
+
+	monitorIDs := make([]uint, 0, len(monitors))
+	createdAtByID := make(map[uint]time.Time, len(monitors))
+	for _, monitor := range monitors {
+		monitorIDs = append(monitorIDs, monitor.ID)
+		createdAtByID[monitor.ID] = monitor.CreatedAt
+	}
+
+	historyByMonitor, err := models.LoadUptimeHistoryBarsForMonitors(h.DB, monitorIDs, createdAtByID, now)
 	if err != nil {
-		applog.AddError("failed to load monitor check history", err.Error())
-		checksByMonitor = map[uint][]models.MonitorCheck{}
+		applog.AddError("failed to load monitor uptime history", err.Error())
+		historyByMonitor = map[uint][]models.UptimeHistoryBar{}
+	}
+
+	uptimeByMonitor, err := models.LoadMonitorUptimes(h.DB, monitorIDs, createdAtByID, now)
+	if err != nil {
+		applog.AddError("failed to load monitor uptime stats", err.Error())
+		uptimeByMonitor = map[uint]models.MonitorUptime{}
 	}
 
 	items := make([]MonitorListItem, 0, len(monitors))
 	for _, monitor := range monitors {
 		items = append(items, MonitorListItem{
-			MonitorURL:   monitor,
-			RecentChecks: checksByMonitor[monitor.ID],
+			MonitorURL:  monitor,
+			HistoryBars: historyByMonitor[monitor.ID],
+			Uptime:      uptimeByMonitor[monitor.ID],
 		})
 	}
 
@@ -103,19 +119,26 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 		heartbeats = nil
 	}
 
-	since := time.Now().Add(-30 * time.Minute)
-	checksByMonitor, err := models.LoadMonitorChecksSince(h.DB, since)
+	now := time.Now()
+
+	historyBars, err := models.BuildUptimeHistoryBars(h.DB, uint(id), monitor.CreatedAt, now)
 	if err != nil {
-		applog.AddError("failed to load monitor check history", err.Error())
+		applog.AddError("failed to load monitor uptime history", err.Error())
+		historyBars = nil
 	}
-	recentChecks := checksByMonitor[uint(id)]
+
+	uptime, err := models.LoadMonitorUptime(h.DB, uint(id), monitor.CreatedAt, now)
+	if err != nil {
+		applog.AddError("failed to load monitor uptime stats", err.Error())
+	}
 
 	displayName := models.MonitorDisplayName(monitor)
 	h.renderPage(c, http.StatusOK, "admin/monitors/show.html", gin.H{
-		"Monitor":      monitor,
-		"DisplayName":  displayName,
-		"Heartbeats":   heartbeats,
-		"RecentChecks": recentChecks,
+		"Monitor":     monitor,
+		"DisplayName": displayName,
+		"Heartbeats":  heartbeats,
+		"HistoryBars": historyBars,
+		"Uptime":      uptime,
 	}, PageOptions{Title: displayName, ActiveNav: "monitors"})
 }
 
