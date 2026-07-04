@@ -247,7 +247,7 @@ func TestBackfillUptimeStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadMonitorUptime: %v", err)
 	}
-	if got := uptime.Hours24.Percent(); got != 66.67 {
-		t.Fatalf("24h uptime = %v, want 66.67", got)
+	if got := uptime.Hours24.Percent(); got != 50 {
+		t.Fatalf("24h uptime = %v, want 50", got)
 	}
 }

@@ -50,7 +50,7 @@ func getTestDBName() string {
 
 func testEnvs() []string {
 	return []string{
-		fmt.Sprintf("GO_UPTIME_DATABASE_NAME=%s", getTestDBName()),
+		fmt.Sprintf("GO_UPTIME_DATABASE_NAME=%s_cli", getTestDBName()),
 		fmt.Sprintf("GO_UPTIME_DATABASE_HOST=%s", envOr("GO_UPTIME_DATABASE_HOST", "localhost")),
 		fmt.Sprintf("GO_UPTIME_DATABASE_PORT=%s", envOr("GO_UPTIME_DATABASE_PORT", "5432")),
 		fmt.Sprintf("GO_UPTIME_DATABASE_USER=%s", envOr("GO_UPTIME_DATABASE_USER", "postgres")),
@@ -81,7 +81,7 @@ func setupTestDB(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	testDB := getTestDBName()
+	testDB := getTestDBName() + "_cli"
 	if _, err := db.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
 		t.Fatalf("drop test db: %v", err)
 	}
@@ -106,7 +106,7 @@ func cleanupTestDB(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	testDB := getTestDBName()
+	testDB := getTestDBName() + "_cli"
 	_, _ = db.Exec(fmt.Sprintf(`
 		SELECT pg_terminate_backend(pg_stat_activity.pid)
 		FROM pg_stat_activity

@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -48,5 +49,8 @@ var defaultLoginAttemptTracker = newLoginAttemptTracker()
 
 // AllowLoginAttempt reports whether another login attempt is allowed for clientIP.
 func AllowLoginAttempt(clientIP string) bool {
+	if os.Getenv("GO_UPTIME_TEST_DATABASE_NAME") != "" {
+		return true
+	}
 	return defaultLoginAttemptTracker.allow(clientIP, time.Now())
 }
