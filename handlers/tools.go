@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
 	"go-uptime/database"
 	"go-uptime/internal/applog"
+	"go-uptime/internal/notify"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -20,8 +22,15 @@ func (h *Handler) ToolsPage(c *gin.Context) {
 		tables = nil
 	}
 
+	notifications, notifyErr := models.LoadNotificationSettings(h.DB)
+	if notifyErr != nil {
+		applog.AddError("failed to load notification settings", notifyErr.Error())
+	}
+
 	h.renderPage(c, http.StatusOK, "admin/tools/index.html", gin.H{
-		"Tables": tables,
+		"Tables":             tables,
+		"TelegramConfigured": notifications.TelegramConfigured(),
+		"SMTPConfigured":     notifications.SMTPConfigured(),
 	}, PageOptions{Title: "Dev Tools", ActiveNav: "tools"})
 }
 
@@ -100,4 +109,45 @@ func (h *Handler) ToolsSeedMonitors(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"created": created})
+}
+
+// ToolsTestTelegram отправляет тестовое Telegram-оповещение (только development).
+func (h *Handler) ToolsTestTelegram(c *gin.Context) {
+	settings, err := models.LoadNotificationSettings(h.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if err := notify.SendTestTelegram(settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// ToolsTestSMTP отправляет тестовое email-оповещение (только development).
+func (h *Handler) ToolsTestSMTP(c *gin.Context) {
+	settings, err := models.LoadNotificationSettings(h.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if err := notify.SendTestSMTP(settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// ToolsTestError добавляет тестовую запись об ошибке в память (только development).
+func (h *Handler) ToolsTestError(c *gin.Context) {
+	applog.AddError("test error from dev tools", "manual trigger")
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// ToolsTestLog добавляет тестовую запись лога в память (только development).
+func (h *Handler) ToolsTestLog(c *gin.Context) {
+	message := fmt.Sprintf("test log entry from dev tools at %s", time.Now().Format(time.RFC3339))
+	applog.AddLog("info", message, "source=dev-tools")
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": message})
 }

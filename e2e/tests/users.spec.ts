@@ -29,12 +29,15 @@ test.describe('Users CRUD', () => {
     await page.locator('#confirm_password').fill('secret123');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/users');
+    await expect(page).toHaveURL('/admin/users?saved=1');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('newuser')).toBeVisible();
 
     await page.getByRole('row', { name: /newuser/ }).getByRole('link', { name: 'Edit' }).click();
     await page.locator('#username').fill('renamed');
     await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page).toHaveURL('/admin/users?saved=1');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('renamed')).toBeVisible();
 
     page.on('dialog', (dialog) => dialog.accept());
@@ -58,7 +61,8 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/monitors');
+    await expect(page).toHaveURL('/admin/monitors?saved=1');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('https://example.com')).toBeVisible();
   });
 
@@ -67,7 +71,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://example.org');
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page).toHaveURL('/admin/monitors');
+    await expect(page).toHaveURL('/admin/monitors?saved=1');
     await expect(page.getByRole('cell', { name: 'example.org', exact: true })).toBeVisible();
   });
 
@@ -102,7 +106,7 @@ test.describe('Monitors', () => {
     });
 
     await page.goto('/admin/monitors');
-    await expect(page.getByText('97.22%')).toBeVisible();
+    await expect(page.getByText('97.22%').first()).toBeVisible();
   });
 
   test('hides uptime percentages for monitors younger than reporting period', async ({ page, request }) => {
@@ -197,9 +201,37 @@ test.describe('Application logs', () => {
   });
 
   test('shows zerolog entries including HTTP access logs', async ({ page }) => {
+    await page.goto('/admin/tools');
+    await page.getByRole('button', { name: 'Generate test log' }).click();
+    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+
     await page.goto('/admin/logs');
     await expect(page.getByRole('heading', { name: 'Application Logs' })).toBeVisible();
-    await expect(page.getByText('GET /admin/logs')).toBeVisible();
+    await expect(page.locator('.log-table tbody').getByText('test log entry from dev tools')).toBeVisible();
+  });
+
+  test('shows newest log entries first', async ({ page }) => {
+    await page.goto('/admin/tools');
+    await page.getByRole('button', { name: 'Generate test log' }).click();
+    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+
+    await page.goto('/admin/tools');
+    await page.getByRole('button', { name: 'Generate test log' }).click();
+    await expect(page.getByText(/Test log recorded:/)).toBeVisible();
+
+    await page.goto('/admin/logs');
+    const testRows = page.locator('.log-table tbody tr', { hasText: 'test log entry from dev tools' });
+    await expect(testRows.first()).toBeVisible();
+    const count = await testRows.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    const times: string[] = [];
+    for (let i = 0; i < Math.min(count, 5); i++) {
+      times.push((await testRows.nth(i).locator('td').first().textContent()) ?? '');
+    }
+    for (let i = 0; i < times.length - 1; i++) {
+      expect(times[i] >= times[i + 1]).toBeTruthy();
+    }
   });
 });
 
@@ -211,6 +243,42 @@ test.describe('Settings', () => {
     await page.locator('#check_interval_seconds').fill('120');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page).toHaveURL('/app/settings?saved=1');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.locator('#check_interval_seconds')).toHaveValue('120');
+  });
+});
+
+test.describe('Dev tools', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await login(page, request);
+    await apiCall(request, 'clear-table', { table: 'app_settings' });
+  });
+
+  test('disables notification test buttons without saved settings', async ({ page }) => {
+    await page.goto('/admin/tools');
+    await expect(page.getByRole('button', { name: 'Send test Telegram' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Send test email' })).toBeDisabled();
+    await expect(page.getByText('Buttons are enabled only when the corresponding channel is saved')).toBeVisible();
+  });
+
+  test('enables notification test buttons when settings are saved', async ({ page }) => {
+    await page.goto('/app/settings');
+    await page.locator('#notification_telegram_url').fill('telegram://token@telegram?channels=123');
+    await page.locator('#notification_smtp_host').fill('smtp.example.com');
+    await page.locator('#notification_smtp_to').fill('ops@example.com');
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    await page.goto('/admin/tools');
+    await expect(page.getByRole('button', { name: 'Send test Telegram' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Send test email' })).toBeEnabled();
+  });
+
+  test('generates test error visible on errors page', async ({ page }) => {
+    await page.goto('/admin/tools');
+    await page.getByRole('button', { name: 'Generate test error' }).click();
+    await expect(page.getByText('Test error recorded. Open Errors to view it.')).toBeVisible();
+
+    await page.goto('/admin/errors');
+    await expect(page.getByText('test error from dev tools')).toBeVisible();
   });
 });

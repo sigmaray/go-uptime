@@ -1,0 +1,36 @@
+{{ define "admin/monitors/notification_fields.html" }}
+<fieldset class="mb-3 monitor-notifications">
+    <legend class="form-label fs-6 mb-2">Notifications</legend>
+    {{ if and (not .TelegramConfigured) (not .SMTPConfigured) }}
+    <div class="alert alert-secondary py-2 small monitor-notifications__hint" role="status">
+        Configure Telegram or SMTP credentials in <a href="/app/settings">Settings</a> to enable notifications for this monitor.
+    </div>
+    {{ else }}
+    <div class="form-text monitor-notifications__hint mb-2">
+        Choose which channels should alert when this monitor goes down or recovers.
+    </div>
+    {{ end }}
+    <div class="form-check monitor-notifications__option">
+        <input class="form-check-input" type="checkbox" id="notify_telegram" name="notify_telegram"
+               {{ if .NotifyTelegram }}checked{{ end }}
+               {{ if not .TelegramConfigured }}disabled{{ end }}>
+        <label class="form-check-label{{ if not .TelegramConfigured }} text-muted{{ end }}" for="notify_telegram">
+            Notify via Telegram
+        </label>
+        {{ if not .TelegramConfigured }}
+        <div class="form-text">Telegram is not configured in system settings.</div>
+        {{ end }}
+    </div>
+    <div class="form-check monitor-notifications__option">
+        <input class="form-check-input" type="checkbox" id="notify_smtp" name="notify_smtp"
+               {{ if .NotifySMTP }}checked{{ end }}
+               {{ if not .SMTPConfigured }}disabled{{ end }}>
+        <label class="form-check-label{{ if not .SMTPConfigured }} text-muted{{ end }}" for="notify_smtp">
+            Notify via email (SMTP)
+        </label>
+        {{ if not .SMTPConfigured }}
+        <div class="form-text">SMTP is not configured in system settings.</div>
+        {{ end }}
+    </div>
+</fieldset>
+{{ end }}

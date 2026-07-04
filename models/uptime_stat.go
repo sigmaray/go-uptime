@@ -110,6 +110,7 @@ func (s UptimeSummary) Percent() float64 {
 
 // MonitorUptime groups uptime summaries for the standard reporting periods.
 type MonitorUptime struct {
+	Hour1   UptimeSummary
 	Hours24 UptimeSummary
 	Days30  UptimeSummary
 	Year1   UptimeSummary
@@ -183,10 +184,14 @@ func BackfillUptimeStats(db *gorm.DB) error {
 	return nil
 }
 
-// LoadMonitorUptime returns uptime summaries for one monitor across 24h, 30d, and 365d windows.
+// LoadMonitorUptime returns uptime summaries for one monitor across 1h, 24h, 30d, and 365d windows.
 // createdAt limits each window to the time after the monitor was created; younger monitors
 // return empty summaries for periods they have not existed long enough to cover.
 func LoadMonitorUptime(db *gorm.DB, monitorID uint, createdAt, now time.Time) (MonitorUptime, error) {
+	hour1, err := loadUptimeSummary(db, monitorID, createdAt, now, time.Hour, uptimeGranularityMinutely)
+	if err != nil {
+		return MonitorUptime{}, err
+	}
 	hours24, err := loadUptimeSummary(db, monitorID, createdAt, now, minutelyStatRetention, uptimeGranularityMinutely)
 	if err != nil {
 		return MonitorUptime{}, err
@@ -201,6 +206,7 @@ func LoadMonitorUptime(db *gorm.DB, monitorID uint, createdAt, now time.Time) (M
 	}
 
 	return MonitorUptime{
+		Hour1:   hour1,
 		Hours24: hours24,
 		Days30:  days30,
 		Year1:   year1,
@@ -215,6 +221,10 @@ func LoadMonitorUptimes(db *gorm.DB, monitorIDs []uint, createdAtByID map[uint]t
 		return result, nil
 	}
 
+	hour1, err := sumUptimeBucketsForMonitors(db, monitorIDs, createdAtByID, now, time.Hour, uptimeGranularityMinutely)
+	if err != nil {
+		return nil, err
+	}
 	hours24, err := sumUptimeBucketsForMonitors(db, monitorIDs, createdAtByID, now, minutelyStatRetention, uptimeGranularityMinutely)
 	if err != nil {
 		return nil, err
@@ -230,6 +240,7 @@ func LoadMonitorUptimes(db *gorm.DB, monitorIDs []uint, createdAtByID map[uint]t
 
 	for _, id := range monitorIDs {
 		result[id] = MonitorUptime{
+			Hour1:   hour1[id],
 			Hours24: hours24[id],
 			Days30:  days30[id],
 			Year1:   year1[id],

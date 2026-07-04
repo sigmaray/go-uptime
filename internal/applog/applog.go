@@ -71,11 +71,13 @@ func AddError(message, fields string) {
 	})
 }
 
-// RecentLogs возвращает последние записи логов (не более maxEntries).
+// RecentLogs возвращает последние записи логов (не более maxEntries), новые первыми.
 func RecentLogs() []Entry {
 	logMu.RLock()
 	defer logMu.RUnlock()
-	return copyEntries(logs)
+	out := copyEntries(logs)
+	reverseEntries(out)
+	return out
 }
 
 // RecentEvents возвращает последние события приложения (не более maxEntries).
@@ -110,4 +112,10 @@ func copyEventEntries(buf []EventEntry) []EventEntry {
 	out := make([]EventEntry, len(buf))
 	copy(out, buf)
 	return out
+}
+
+func reverseEntries(buf []Entry) {
+	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
+		buf[i], buf[j] = buf[j], buf[i]
+	}
 }

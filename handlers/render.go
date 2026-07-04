@@ -16,6 +16,18 @@ type PageOptions struct {
 	ActiveNav string
 	HideNav   bool
 	BodyClass string
+	Success   string
+}
+
+// flashMessage возвращает сообщение об успехе из query-параметров redirect.
+func flashMessage(c *gin.Context) string {
+	if c.Query("saved") == "1" {
+		return "Saved successfully."
+	}
+	if c.Query("deleted") == "1" {
+		return "Deleted successfully."
+	}
+	return ""
 }
 
 // renderPage рендерит страницу через общий layout.
@@ -30,6 +42,11 @@ func (h *Handler) renderPage(c *gin.Context, status int, contentTmpl string, dat
 			errMsg = s
 		}
 		delete(data, "Error")
+	}
+
+	successMsg := opts.Success
+	if successMsg == "" {
+		successMsg = flashMessage(c)
 	}
 
 	session := sessions.Default(c)
@@ -48,6 +65,7 @@ func (h *Handler) renderPage(c *gin.Context, status int, contentTmpl string, dat
 		"HideNav":     opts.HideNav,
 		"BodyClass":   opts.BodyClass,
 		"Error":       errMsg,
+		"Success":     successMsg,
 		"Content":     template.HTML(contentBuf.String()),
 		"CurrentUser": currentUser,
 		"IsDev":       h.Config.IsDevelopment(),

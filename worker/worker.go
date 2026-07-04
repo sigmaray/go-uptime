@@ -10,6 +10,7 @@ import (
 
 	"go-uptime/config"
 	"go-uptime/internal/applog"
+	"go-uptime/internal/notify"
 	"go-uptime/models"
 
 	"github.com/rs/zerolog/log"
@@ -149,8 +150,17 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 	w.markUp(monitor, now)
 }
 
+// shouldNotifyStateChange reports whether a status transition should trigger alerts.
+// previous nil IsUp means the monitor has not been checked yet — no alert on baseline.
+func shouldNotifyStateChange(previous *bool, nowUp bool) bool {
+	if previous == nil {
+		return false
+	}
+	return *previous != nowUp
+}
+
 func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time) {
-	wasDown := monitor.IsUp == nil || !*monitor.IsUp
+	wasDown := shouldNotifyStateChange(monitor.IsUp, true)
 
 	updates := map[string]interface{}{
 		"is_up":           true,
@@ -178,11 +188,12 @@ func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time) {
 
 	if wasDown {
 		applog.AddEvent("monitor", fmt.Sprintf("Monitor %q (%s) is UP", models.MonitorDisplayName(monitor), monitor.URL))
+		w.sendNotifications(monitor, true, "")
 	}
 }
 
 func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string) {
-	wasUp := monitor.IsUp == nil || *monitor.IsUp
+	wasUp := shouldNotifyStateChange(monitor.IsUp, false)
 	now := time.Now()
 	updates := map[string]interface{}{
 		"is_up":           false,
@@ -216,11 +227,37 @@ func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string) {
 
 	if wasUp {
 		applog.AddEvent("monitor", fmt.Sprintf("Monitor %q (%s) is DOWN: %s", models.MonitorDisplayName(monitor), monitor.URL, errMsg))
+		w.sendNotifications(monitor, false, errMsg)
 	}
 }
 
 func (w *MonitorWorker) recordCheck(monitorID uint, checkedAt time.Time, isUp bool) {
 	if err := models.RecordMonitorCheck(w.db, monitorID, checkedAt, isUp); err != nil {
 		log.Error().Err(err).Uint("monitor_id", monitorID).Msg("failed to record monitor check")
+	}
+}
+
+// sendNotifications отправляет оповещения о смене статуса, если каналы настроены и включены для монитора.
+func (w *MonitorWorker) sendNotifications(monitor models.MonitorURL, isUp bool, errMsg string) {
+	if !monitor.NotifyTelegram && !monitor.NotifySMTP {
+		return
+	}
+
+	settings, err := models.LoadNotificationSettings(w.db)
+	if err != nil {
+		log.Error().Err(err).Uint("monitor_id", monitor.ID).Msg("failed to load notification settings")
+		applog.AddError("failed to load notification settings", err.Error())
+		return
+	}
+
+	change := notify.MonitorStateChange{
+		DisplayName: models.MonitorDisplayName(monitor),
+		URL:         monitor.URL,
+		IsUp:        isUp,
+		Error:       errMsg,
+	}
+	if err := notify.SendMonitorStateChange(settings, monitor, change); err != nil {
+		log.Error().Err(err).Uint("monitor_id", monitor.ID).Msg("failed to send monitor notification")
+		applog.AddError("failed to send monitor notification", err.Error())
 	}
 }

@@ -61,7 +61,21 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 
 // NewMonitorPage отображает форму создания URL.
 func (h *Handler) NewMonitorPage(c *gin.Context) {
-	h.renderPage(c, http.StatusOK, "admin/monitors/new.html", gin.H{}, PageOptions{
+	_, notifyData, err := h.monitorNotificationContext()
+	if err != nil {
+		applog.AddError("failed to load notification settings", err.Error())
+		notifyData = gin.H{
+			"TelegramConfigured": false,
+			"SMTPConfigured":     false,
+		}
+	}
+
+	data := gin.H{}
+	for key, value := range notifyData {
+		data[key] = value
+	}
+
+	h.renderPage(c, http.StatusOK, "admin/monitors/new.html", data, PageOptions{
 		Title:     "Add Monitor URL",
 		ActiveNav: "monitors",
 	})
@@ -71,22 +85,40 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 func (h *Handler) CreateMonitor(c *gin.Context) {
 	var input models.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
+		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
-			"Error": "Invalid form data",
-			"Input": input,
+			"Error":              "Invalid form data",
+			"Input":              input,
+			"NotifyTelegram":     input.NotifyTelegram,
+			"NotifySMTP":         input.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Add Monitor URL", ActiveNav: "monitors"})
 		return
 	}
+	if err := h.bindMonitorNotificationFlags(c, &input); err != nil {
+		applog.AddError("failed to load notification settings", err.Error())
+	}
 	if err := input.Validate(); err != nil {
+		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
-			"Error": models.FormatValidationError(err),
-			"Input": input,
+			"Error":              models.FormatValidationError(err),
+			"Input":              input,
+			"NotifyTelegram":     input.NotifyTelegram,
+			"NotifySMTP":         input.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Add Monitor URL", ActiveNav: "monitors"})
 		return
 	}
 
 	name := models.ResolveMonitorName(input.Name, input.URL)
-	monitor := models.MonitorURL{Name: name, URL: input.URL}
+	monitor := models.MonitorURL{
+		Name:           name,
+		URL:            input.URL,
+		NotifyTelegram: input.NotifyTelegram,
+		NotifySMTP:     input.NotifySMTP,
+	}
 	if err := h.DB.Create(&monitor).Error; err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/new.html", gin.H{
 			"Error": "Failed to create monitor URL",
@@ -96,7 +128,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Created monitor %q (%s)", monitor.Name, monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors")
+	c.Redirect(http.StatusFound, "/admin/monitors?saved=1")
 }
 
 // MonitorShowPage renders monitor details and heartbeat history.
@@ -156,9 +188,23 @@ func (h *Handler) EditMonitorPage(c *gin.Context) {
 		return
 	}
 
-	h.renderPage(c, http.StatusOK, "admin/monitors/edit.html", gin.H{
-		"Monitor": monitor,
-	}, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
+	_, notifyData, notifyErr := h.monitorNotificationContext()
+	if notifyErr != nil {
+		applog.AddError("failed to load notification settings", notifyErr.Error())
+		notifyData = gin.H{
+			"TelegramConfigured": false,
+			"SMTPConfigured":     false,
+		}
+	}
+
+	data := gin.H{"Monitor": monitor}
+	for key, value := range notifyData {
+		data[key] = value
+	}
+	data["NotifyTelegram"] = monitor.NotifyTelegram
+	data["NotifySMTP"] = monitor.NotifySMTP
+
+	h.renderPage(c, http.StatusOK, "admin/monitors/edit.html", data, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 }
 
 // UpdateMonitor обрабатывает обновление URL.
@@ -177,24 +223,39 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 
 	var input models.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
+		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
-			"Error":   "Invalid form data",
-			"Monitor": monitor,
+			"Error":              "Invalid form data",
+			"Monitor":            monitor,
+			"NotifyTelegram":     monitor.NotifyTelegram,
+			"NotifySMTP":         monitor.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 		return
+	}
+	if err := h.bindMonitorNotificationFlags(c, &input); err != nil {
+		applog.AddError("failed to load notification settings", err.Error())
 	}
 	if err := input.Validate(); err != nil {
 		monitor.Name = input.Name
 		monitor.URL = input.URL
+		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
-			"Error":   models.FormatValidationError(err),
-			"Monitor": monitor,
+			"Error":              models.FormatValidationError(err),
+			"Monitor":            monitor,
+			"NotifyTelegram":     input.NotifyTelegram,
+			"NotifySMTP":         input.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 		return
 	}
 
 	monitor.Name = models.ResolveMonitorName(input.Name, input.URL)
 	monitor.URL = input.URL
+	monitor.NotifyTelegram = input.NotifyTelegram
+	monitor.NotifySMTP = input.NotifySMTP
 	if err := h.DB.Save(&monitor).Error; err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/edit.html", gin.H{
 			"Error":   "Failed to update monitor URL",
@@ -204,7 +265,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Updated monitor %q (%s)", monitor.Name, monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors")
+	c.Redirect(http.StatusFound, "/admin/monitors?saved=1")
 }
 
 // DeleteMonitor удаляет URL из мониторинга.
@@ -227,5 +288,5 @@ func (h *Handler) DeleteMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Deleted monitor %q (%s)", models.MonitorDisplayName(monitor), monitor.URL))
-	c.Redirect(http.StatusFound, "/admin/monitors")
+	c.Redirect(http.StatusFound, "/admin/monitors?deleted=1")
 }

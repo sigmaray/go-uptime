@@ -11,6 +11,7 @@
         <input type="url" class="form-control" id="url" name="url" value="{{ .Input.URL }}" placeholder="https://example.com" required aria-required="true">
         <div class="form-text">Required. Must be a valid HTTP or HTTPS address.</div>
     </div>
+    {{ template "admin/monitors/notification_fields.html" . }}
     <button type="submit" class="btn btn-primary">Create</button>
     <a href="/admin/monitors" class="btn btn-link">Cancel</a>
 </form>

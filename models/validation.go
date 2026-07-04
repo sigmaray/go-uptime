@@ -31,11 +31,21 @@ func init() {
 	})
 
 	_ = validate.RegisterValidation("monitor_url", validateMonitorURL)
+	_ = validate.RegisterValidation("telegram_shoutrrr_url", validateTelegramShoutrrrURL)
 
 	english := en.New()
 	uni := ut.New(english, english)
 	trans, _ = uni.GetTranslator("en")
 	_ = en_translations.RegisterDefaultTranslations(validate, trans)
+}
+
+// validateTelegramShoutrrrURL проверяет, что строка — непустой Shoutrrr URL для Telegram.
+func validateTelegramShoutrrrURL(fl validator.FieldLevel) bool {
+	raw := strings.TrimSpace(fl.Field().String())
+	if raw == "" {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(raw), "telegram://")
 }
 
 // validateMonitorURL проверяет, что URL использует схему http или https.

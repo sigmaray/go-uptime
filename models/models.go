@@ -19,15 +19,17 @@ type User struct {
 
 // MonitorURL — HTTP/HTTPS ресурс для мониторинга.
 type MonitorURL struct {
-	ID            uint `gorm:"primaryKey"`
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     gorm.DeletedAt `gorm:"index"`
-	Name          string         `gorm:"not null;default:''"`
-	URL           string         `gorm:"not null"`
-	IsUp          *bool
-	LastCheckedAt *time.Time
-	LastError     string `gorm:"not null;default:''"`
+	ID             uint `gorm:"primaryKey"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	Name           string         `gorm:"not null;default:''"`
+	URL            string         `gorm:"not null"`
+	IsUp           *bool
+	LastCheckedAt  *time.Time
+	LastError      string `gorm:"not null;default:''"`
+	NotifyTelegram bool   `gorm:"not null;default:false"`
+	NotifySMTP     bool   `gorm:"not null;default:false"`
 }
 
 // Incident — период недоступности мониторируемого URL.

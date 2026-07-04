@@ -57,7 +57,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Created user %q", input.Username))
-	c.Redirect(http.StatusFound, "/admin/users")
+	c.Redirect(http.StatusFound, "/admin/users?saved=1")
 }
 
 // EditUserPage отображает форму редактирования пользователя.
@@ -132,7 +132,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Updated user %q", user.Username))
-	c.Redirect(http.StatusFound, "/admin/users")
+	c.Redirect(http.StatusFound, "/admin/users?saved=1")
 }
 
 // DeleteUser удаляет пользователя.
@@ -155,5 +155,5 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 
 	applog.AddEvent("user", fmt.Sprintf("Deleted user %q", user.Username))
-	c.Redirect(http.StatusFound, "/admin/users")
+	c.Redirect(http.StatusFound, "/admin/users?deleted=1")
 }

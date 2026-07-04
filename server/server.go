@@ -100,6 +100,10 @@ func Run(cfg *config.Config, migrations embed.FS) {
 			tools.POST("/clear-table", h.ToolsClearTable)
 			tools.POST("/execute-sql", h.ToolsExecuteSQL)
 			tools.POST("/seed-monitors", h.ToolsSeedMonitors)
+			tools.POST("/test-telegram", h.ToolsTestTelegram)
+			tools.POST("/test-smtp", h.ToolsTestSMTP)
+			tools.POST("/test-error", h.ToolsTestError)
+			tools.POST("/test-log", h.ToolsTestLog)
 		}
 	}
 

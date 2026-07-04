@@ -32,6 +32,49 @@
         </div>
     </div>
 
+    <div class="col-lg-6">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Test Notifications</h3>
+                <p class="small text-muted mb-3">
+                    Buttons are enabled only when the corresponding channel is saved in
+                    <a href="/app/settings">Settings</a>.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-primary btn-sm"
+                            data-dev-tools-test-telegram
+                            {{ if not .TelegramConfigured }}disabled title="Configure Telegram in Settings first"{{ end }}>
+                        Send test Telegram
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm"
+                            data-dev-tools-test-smtp
+                            {{ if not .SMTPConfigured }}disabled title="Configure SMTP in Settings first"{{ end }}>
+                        Send test email
+                    </button>
+                </div>
+                <div class="mt-2 small text-muted" data-dev-tools-notify-result></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Test In-Memory Records</h3>
+                <p class="small text-muted mb-3">
+                    Generate sample entries that appear on
+                    <a href="/admin/errors">Errors</a> and
+                    <a href="/admin/logs">Logs</a>.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-warning btn-sm" data-dev-tools-test-error>Generate test error</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-dev-tools-test-log>Generate test log</button>
+                </div>
+                <div class="mt-2 small text-muted" data-dev-tools-record-result></div>
+            </div>
+        </div>
+    </div>
+
     <div class="col-12">
         <div class="card dev-tools__panel">
             <div class="card-body">

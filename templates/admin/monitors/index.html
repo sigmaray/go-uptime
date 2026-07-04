@@ -36,6 +36,10 @@
                 <td>
                     <div class="uptime-stats">
                         <span class="uptime-stats__item">
+                            <span class="uptime-stats__label">1h</span>
+                            <span class="{{ uptimePercentClass .Uptime.Hour1 }}">{{ formatUptimePercent .Uptime.Hour1 }}</span>
+                        </span>
+                        <span class="uptime-stats__item">
                             <span class="uptime-stats__label">24h</span>
                             <span class="{{ uptimePercentClass .Uptime.Hours24 }}">{{ formatUptimePercent .Uptime.Hours24 }}</span>
                         </span>
