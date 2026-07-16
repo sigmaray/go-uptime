@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -25,6 +26,9 @@ func consumeFlash(c *gin.Context) string {
 	flashes := session.Flashes()
 	if len(flashes) == 0 {
 		return ""
+	}
+	if err := session.Save(); err != nil {
+		log.Error().Err(err).Msg("failed to save session after consuming flash message")
 	}
 	if message, ok := flashes[0].(string); ok {
 		return message

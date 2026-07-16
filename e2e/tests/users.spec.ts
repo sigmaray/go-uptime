@@ -43,7 +43,12 @@ test.describe('Users CRUD', () => {
 
     page.on('dialog', (dialog) => dialog.accept());
     await page.getByRole('row', { name: /renamed/ }).getByRole('button', { name: 'Delete' }).click();
+    await expect(page).toHaveURL('/admin/users');
+    await expect(page.getByText('Deleted successfully.')).toBeVisible();
     await expect(page.getByText('renamed')).not.toBeVisible();
+
+    await page.goto('/admin/settings');
+    await expect(page.getByText('Deleted successfully.')).toHaveCount(0);
   });
 });
 
