@@ -72,6 +72,95 @@ test.describe('Monitors', () => {
     await expect(page.getByText('https://example.com')).toBeVisible();
   });
 
+  test('shows incidents on monitor detail page', async ({ page, request }) => {
+    const monitorName = 'Incidents Test';
+    const monitorUrl = 'https://incidents.example.com';
+    const openError = 'open incident error';
+    const resolvedError = 'resolved incident error';
+
+    await page.goto('/admin/monitors/new');
+    await page.locator('#name').fill(monitorName);
+    await page.locator('#url').fill(monitorUrl);
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO incidents (monitor_url_id, started_at, resolved_at, error_message)
+              SELECT id, NOW() - INTERVAL '10 minutes', NULL, '${openError}'
+              FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO incidents (monitor_url_id, started_at, resolved_at, error_message)
+              SELECT id, NOW() - INTERVAL '15 minutes', NOW() - INTERVAL '5 minutes', '${resolvedError}'
+              FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+
+    await page.goto('/admin/monitors');
+    await page.getByRole('link', { name: monitorName }).click();
+
+    await expect(page).toHaveURL(/\/admin\/monitors\/\d+$/);
+
+    const incidentsTable = page.locator('.incidents-table');
+    await expect(incidentsTable).toBeVisible();
+
+    const openRow = incidentsTable.locator('tbody tr', { hasText: openError }).first();
+    await expect(openRow.locator('span.badge')).toHaveText('Open');
+    await expect(openRow).toContainText('ongoing');
+
+    const resolvedRow = incidentsTable.locator('tbody tr', { hasText: resolvedError }).first();
+    await expect(resolvedRow.locator('span.badge')).toHaveCount(0);
+    await expect(resolvedRow).toContainText('10m0s');
+  });
+
+  test('paginates incidents and heartbeats on monitor detail page', async ({ page, request }) => {
+    const monitorName = 'Pagination Test';
+    const monitorUrl = 'https://pagination.example.com';
+
+    await page.goto('/admin/monitors/new');
+    await page.locator('#name').fill(monitorName);
+    await page.locator('#url').fill(monitorUrl);
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO incidents (monitor_url_id, started_at, resolved_at, error_message)
+              SELECT m.id, NOW() - (n || ' minutes')::interval, NOW() - ((n - 1) || ' minutes')::interval, 'incident ' || n
+              FROM monitor_urls m
+              CROSS JOIN generate_series(1, 25) AS n
+              WHERE m.url = '${monitorUrl}'`,
+    });
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up)
+              SELECT m.id, NOW() - (n || ' minutes')::interval, true
+              FROM monitor_urls m
+              CROSS JOIN generate_series(1, 25) AS n
+              WHERE m.url = '${monitorUrl}'`,
+    });
+
+    await page.goto('/admin/monitors');
+    await page.getByRole('link', { name: monitorName }).click();
+
+    const incidentsTable = page.locator('.incidents-table');
+    const heartbeatsTable = page.locator('.heartbeats-table');
+
+    await expect(incidentsTable.locator('tbody tr')).toHaveCount(20);
+    const incidentsPagination = page.getByLabel('Incidents pagination');
+    await expect(incidentsPagination.getByRole('link', { name: '2', exact: true })).toBeVisible();
+    await expect(incidentsPagination.locator('.page-item.active .page-link')).toHaveText('1');
+    await expect(heartbeatsTable.locator('tbody tr')).toHaveCount(20);
+    const heartbeatsPagination = page.getByLabel('Heartbeat History pagination');
+    await expect(heartbeatsPagination.getByRole('link', { name: '2', exact: true })).toBeVisible();
+    await expect(heartbeatsPagination.locator('.page-item.active .page-link')).toHaveText('1');
+
+    await incidentsPagination.getByRole('link', { name: '2', exact: true }).click();
+    await expect(page).toHaveURL(/incidents_page=2/);
+    await expect(incidentsTable.locator('tbody tr')).toHaveCount(5);
+    await expect(heartbeatsTable.locator('tbody tr')).toHaveCount(20);
+
+    await page.getByLabel('Heartbeat History pagination').getByRole('link', { name: 'Next' }).click();
+    await expect(page).toHaveURL(/incidents_page=2/);
+    await expect(page).toHaveURL(/heartbeats_page=2/);
+    await expect(heartbeatsTable.locator('tbody tr')).toHaveCount(5);
+  });
+
   test('uses URL hostname when name is omitted', async ({ page }) => {
     await page.goto('/admin/monitors/new');
     await page.locator('#url').fill('https://example.org');

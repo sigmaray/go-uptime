@@ -1,6 +1,6 @@
 {{ define "admin/errors/index.html" }}
 <h2 class="mb-4">Application Errors</h2>
-<p class="text-muted">Last 200 errors kept in memory.</p>
+<p class="text-muted">{{ .Pagination.Total }} errors kept in memory.</p>
 <div class="table-responsive">
     <table class="table table-sm table-striped log-table">
         <thead>
@@ -19,4 +19,9 @@
         </tbody>
     </table>
 </div>
+{{ if gt .Pagination.TotalPages 1 }}
+<div class="mt-3">
+    {{ template "admin/pagination.html" .Pagination }}
+</div>
+{{ end }}
 {{ end }}

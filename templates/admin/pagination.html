@@ -1,0 +1,31 @@
+{{ define "admin/pagination.html" }}
+{{ if gt .TotalPages 1 }}
+<nav aria-label="{{ .Label }} pagination">
+    <ul class="pagination pagination-sm mb-0 justify-content-center flex-wrap">
+        <li class="page-item{{ if not .HasPrev }} disabled{{ end }}">
+            {{ if .HasPrev }}
+            <a class="page-link" href="{{ .PrevURL }}">Previous</a>
+            {{ else }}
+            <span class="page-link">Previous</span>
+            {{ end }}
+        </li>
+        {{ range .Pages }}
+        <li class="page-item{{ if .Active }} active{{ end }}"{{ if .Active }} aria-current="page"{{ end }}>
+            {{ if .Active }}
+            <span class="page-link">{{ .Page }}</span>
+            {{ else }}
+            <a class="page-link" href="{{ .URL }}">{{ .Page }}</a>
+            {{ end }}
+        </li>
+        {{ end }}
+        <li class="page-item{{ if not .HasNext }} disabled{{ end }}">
+            {{ if .HasNext }}
+            <a class="page-link" href="{{ .NextURL }}">Next</a>
+            {{ else }}
+            <span class="page-link">Next</span>
+            {{ end }}
+        </li>
+    </ul>
+</nav>
+{{ end }}
+{{ end }}

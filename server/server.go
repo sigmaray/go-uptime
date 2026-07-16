@@ -118,6 +118,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 			pw.POST("/sql", h.PlaywrightExecuteSQL)
 			pw.POST("/clear-table", h.PlaywrightClearTable)
 			pw.POST("/create-user", h.PlaywrightCreateUser)
+			pw.POST("/clear-applog", h.PlaywrightClearApplog)
+			pw.POST("/seed-applog", h.PlaywrightSeedApplog)
 		}
 	}
 

@@ -13,11 +13,32 @@ import (
 
 // UsersList displays the user list.
 func (h *Handler) UsersList(c *gin.Context) {
+	page := parseQueryPage(c.Query("page"))
+	perPage := models.AdminListPageSize
+
+	var total int64
+	if err := h.DB.Model(&models.User{}).Count(&total).Error; err != nil {
+		applog.AddError("failed to count users", err.Error())
+		total = 0
+	}
+	page = models.ClampPage(page, total, perPage)
+
 	var users []models.User
-	h.DB.Order("created_at desc").Find(&users)
+	if err := h.DB.Order("created_at desc").
+		Offset(models.PageOffset(page, perPage)).
+		Limit(perPage).
+		Find(&users).Error; err != nil {
+		applog.AddError("failed to load users", err.Error())
+		users = nil
+	}
+
+	pagination := buildPaginationView(total, page, perPage, "Users", func(p int) string {
+		return buildAdminListURL("/admin/users", p)
+	})
 
 	h.renderPage(c, http.StatusOK, "admin/users/index.html", gin.H{
-		"Users": users,
+		"Users":      users,
+		"Pagination": pagination,
 	}, PageOptions{Title: "Users", ActiveNav: "users"})
 }
 

@@ -32,5 +32,10 @@
         </tbody>
     </table>
 </div>
+{{ if gt .Pagination.TotalPages 1 }}
+<div class="mt-3">
+    {{ template "admin/pagination.html" .Pagination }}
+</div>
+{{ end }}
 <script src="/static/js/confirm-delete.js"></script>
 {{ end }}

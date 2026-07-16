@@ -75,6 +75,38 @@ func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp b
 	return db.Create(&check).Error
 }
 
+// CountMonitorChecks returns the total number of heartbeats across all monitors.
+func CountMonitorChecks(db *gorm.DB) (int64, error) {
+	var count int64
+	err := db.Model(&MonitorCheck{}).Count(&count).Error
+	return count, err
+}
+
+// LoadAllMonitorChecksPage loads one page of heartbeats across all monitors ordered newest first.
+//
+// db is the database handle used for the query.
+// page is the one-based page number.
+// perPage is how many heartbeats each page contains.
+func LoadAllMonitorChecksPage(db *gorm.DB, page, perPage int) ([]MonitorCheck, error) {
+	if perPage < 1 {
+		perPage = AdminListPageSize
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	var checks []MonitorCheck
+	err := db.Preload("MonitorURL").
+		Order("checked_at desc").
+		Offset(PageOffset(page, perPage)).
+		Limit(perPage).
+		Find(&checks).Error
+	if err != nil {
+		return nil, err
+	}
+	return checks, nil
+}
+
 // LoadRecentMonitorChecks returns the most recent heartbeats across all monitors.
 // limit caps how many rows are returned; values above MaxRecentHeartbeatsList are clamped.
 func LoadRecentMonitorChecks(db *gorm.DB, limit int) ([]MonitorCheck, error) {
@@ -101,6 +133,39 @@ func LoadMonitorChecks(db *gorm.DB, monitorID uint, limit int) ([]MonitorCheck, 
 		Order("checked_at desc").
 		Limit(limit).
 		Find(&checks).Error; err != nil {
+		return nil, err
+	}
+	return checks, nil
+}
+
+// CountMonitorChecksForMonitor returns how many heartbeats exist for a monitor.
+func CountMonitorChecksForMonitor(db *gorm.DB, monitorID uint) (int64, error) {
+	var count int64
+	err := db.Model(&MonitorCheck{}).Where("monitor_url_id = ?", monitorID).Count(&count).Error
+	return count, err
+}
+
+// LoadMonitorChecksPage loads one page of heartbeats for a monitor ordered newest first.
+//
+// db is the database handle used for the query.
+// monitorID is the `monitor_urls.id` whose checks are loaded.
+// page is the one-based page number.
+// perPage is how many heartbeats each page contains.
+func LoadMonitorChecksPage(db *gorm.DB, monitorID uint, page, perPage int) ([]MonitorCheck, error) {
+	if perPage < 1 {
+		perPage = MonitorDetailListPageSize
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	var checks []MonitorCheck
+	err := db.Where("monitor_url_id = ?", monitorID).
+		Order("checked_at desc").
+		Offset(PageOffset(page, perPage)).
+		Limit(perPage).
+		Find(&checks).Error
+	if err != nil {
 		return nil, err
 	}
 	return checks, nil

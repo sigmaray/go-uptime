@@ -21,8 +21,24 @@ type MonitorListItem struct {
 
 // MonitorsList displays the list of monitored URLs with status.
 func (h *Handler) MonitorsList(c *gin.Context) {
+	page := parseQueryPage(c.Query("page"))
+	perPage := models.AdminListPageSize
+
+	var total int64
+	if err := h.DB.Model(&models.MonitorURL{}).Count(&total).Error; err != nil {
+		applog.AddError("failed to count monitors", err.Error())
+		total = 0
+	}
+	page = models.ClampPage(page, total, perPage)
+
 	var monitors []models.MonitorURL
-	h.DB.Order("created_at desc").Find(&monitors)
+	if err := h.DB.Order("created_at desc").
+		Offset(models.PageOffset(page, perPage)).
+		Limit(perPage).
+		Find(&monitors).Error; err != nil {
+		applog.AddError("failed to load monitors", err.Error())
+		monitors = nil
+	}
 
 	now := time.Now()
 
@@ -54,8 +70,13 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		})
 	}
 
+	pagination := buildPaginationView(total, page, perPage, "Monitors", func(p int) string {
+		return buildAdminListURL("/admin/monitors", p)
+	})
+
 	h.renderPage(c, http.StatusOK, "admin/monitors/index.html", gin.H{
-		"Monitors": items,
+		"Monitors":   items,
+		"Pagination": pagination,
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 
@@ -148,7 +169,30 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 		return
 	}
 
-	heartbeats, err := models.LoadMonitorChecks(h.DB, uint(id), models.MaxMonitorDetailHeartbeats)
+	incidentsPage := parseQueryPage(c.Query("incidents_page"))
+	heartbeatsPage := parseQueryPage(c.Query("heartbeats_page"))
+
+	incidentTotal, err := models.CountIncidentsForMonitor(h.DB, monitor.ID)
+	if err != nil {
+		applog.AddError("failed to count monitor incidents", err.Error())
+		incidentTotal = 0
+	}
+	incidentsPage = models.ClampPage(incidentsPage, incidentTotal, models.MonitorDetailListPageSize)
+
+	heartbeatTotal, err := models.CountMonitorChecksForMonitor(h.DB, uint(id))
+	if err != nil {
+		applog.AddError("failed to count monitor heartbeats", err.Error())
+		heartbeatTotal = 0
+	}
+	heartbeatsPage = models.ClampPage(heartbeatsPage, heartbeatTotal, models.MonitorDetailListPageSize)
+
+	incidents, incidentsErr := models.LoadIncidentsForMonitorPage(h.DB, monitor.ID, incidentsPage, models.MonitorDetailListPageSize)
+	if incidentsErr != nil {
+		applog.AddError("failed to load monitor incidents", incidentsErr.Error())
+		incidents = nil
+	}
+
+	heartbeats, err := models.LoadMonitorChecksPage(h.DB, uint(id), heartbeatsPage, models.MonitorDetailListPageSize)
 	if err != nil {
 		applog.AddError("failed to load monitor heartbeats", err.Error())
 		heartbeats = nil
@@ -167,13 +211,23 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 		applog.AddError("failed to load monitor uptime stats", err.Error())
 	}
 
+	incidentsPagination := buildPaginationView(incidentTotal, incidentsPage, models.MonitorDetailListPageSize, "Incidents", func(page int) string {
+		return buildMonitorShowURL(monitor.ID, page, heartbeatsPage)
+	})
+	heartbeatsPagination := buildPaginationView(heartbeatTotal, heartbeatsPage, models.MonitorDetailListPageSize, "Heartbeat History", func(page int) string {
+		return buildMonitorShowURL(monitor.ID, incidentsPage, page)
+	})
+
 	displayName := models.MonitorDisplayName(monitor)
 	h.renderPage(c, http.StatusOK, "admin/monitors/show.html", gin.H{
-		"Monitor":     monitor,
-		"DisplayName": displayName,
-		"Heartbeats":  heartbeats,
-		"HistoryBars": historyBars,
-		"Uptime":      uptime,
+		"Monitor":              monitor,
+		"DisplayName":          displayName,
+		"Heartbeats":           heartbeats,
+		"HistoryBars":          historyBars,
+		"Uptime":               uptime,
+		"Incidents":            incidents,
+		"IncidentsPagination":  incidentsPagination,
+		"HeartbeatsPagination": heartbeatsPagination,
 	}, PageOptions{Title: displayName, ActiveNav: "monitors"})
 }
 

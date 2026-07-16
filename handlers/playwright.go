@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"go-uptime/database"
+	"go-uptime/internal/applog"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -93,4 +95,41 @@ func (h *Handler) PlaywrightCreateUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "user": user})
+}
+
+// PlaywrightSeedApplogRequest is the request body for seeding in-memory applog buffers in tests.
+type PlaywrightSeedApplogRequest struct {
+	Kind  string `json:"kind" binding:"required"`
+	Count int    `json:"count" binding:"required,min=1,max=200"`
+}
+
+// PlaywrightClearApplog clears in-memory applog buffers for Playwright tests.
+func (h *Handler) PlaywrightClearApplog(c *gin.Context) {
+	applog.ClearAll()
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// PlaywrightSeedApplog adds entries to in-memory applog buffers for Playwright tests.
+func (h *Handler) PlaywrightSeedApplog(c *gin.Context) {
+	var req PlaywrightSeedApplogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for i := 1; i <= req.Count; i++ {
+		switch req.Kind {
+		case "events":
+			applog.AddEvent("test", fmt.Sprintf("pagination event %d", i))
+		case "errors":
+			applog.AddError(fmt.Sprintf("pagination error %d", i), "test")
+		case "requests":
+			applog.AddMonitorRequest("Pagination Test", "https://pagination.example.com", 200, int64(i), true, "")
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "kind must be events, errors, or requests"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

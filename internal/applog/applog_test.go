@@ -1,6 +1,9 @@
 package applog
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestRecentLogsNewestFirst(t *testing.T) {
 	resetForTest()
@@ -35,6 +38,42 @@ func TestRecentEventsNewestFirst(t *testing.T) {
 	}
 	if events[1].Message != "older event" {
 		t.Fatalf("RecentEvents()[1] = %q, want %q", events[1].Message, "older event")
+	}
+}
+
+func TestRecentErrorsNewestFirst(t *testing.T) {
+	resetForTest()
+
+	AddError("older error", "ctx")
+	AddError("newer error", "ctx")
+
+	errors := RecentErrors()
+	if len(errors) != 2 {
+		t.Fatalf("RecentErrors() len = %d, want 2", len(errors))
+	}
+	if errors[0].Message != "newer error" {
+		t.Fatalf("RecentErrors()[0] = %q, want %q", errors[0].Message, "newer error")
+	}
+	if errors[1].Message != "older error" {
+		t.Fatalf("RecentErrors()[1] = %q, want %q", errors[1].Message, "older error")
+	}
+}
+
+func TestEventsPageReturnsNewestFirstPage(t *testing.T) {
+	resetForTest()
+
+	for i := 1; i <= 105; i++ {
+		AddEvent("test", fmt.Sprintf("event %d", i))
+	}
+
+	page1 := EventsPage(1, 100)
+	if len(page1) != 100 {
+		t.Fatalf("EventsPage(1, 100) len = %d, want 100", len(page1))
+	}
+
+	page2 := EventsPage(2, 100)
+	if len(page2) != 5 {
+		t.Fatalf("EventsPage(2, 100) len = %d, want 5", len(page2))
 	}
 }
 
@@ -80,16 +119,5 @@ func TestRecentLogsStoresZerologEntriesSeparatelyFromEvents(t *testing.T) {
 }
 
 func resetForTest() {
-	logMu.Lock()
-	errorMu.Lock()
-	eventMu.Lock()
-	requestMu.Lock()
-	logs = nil
-	appErrors = nil
-	events = nil
-	requests = nil
-	requestMu.Unlock()
-	eventMu.Unlock()
-	errorMu.Unlock()
-	logMu.Unlock()
+	ClearAll()
 }

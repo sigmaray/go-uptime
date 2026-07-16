@@ -69,31 +69,91 @@
     </div>
 </div>
 
-<h3 class="h5 mb-3">Heartbeat History</h3>
-<div class="table-responsive">
-    <table class="table table-sm table-striped heartbeats-table">
-        <thead>
-            <tr>
-                <th>Checked At</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{ range .Heartbeats }}
-            <tr>
-                <td class="text-nowrap">{{ .CheckedAt.Format "2006-01-02 15:04:05" }}</td>
-                <td>
-                    {{ if .IsUp }}
-                    <span class="badge text-bg-success">Up</span>
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="h5 mb-0">Incidents</h3>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0 incidents-table">
+                <thead>
+                    <tr>
+                        <th>Started</th>
+                        <th>Resolved</th>
+                        <th>Duration</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Incidents }}
+                    <tr>
+                        <td>{{ .StartedAt.Format "2006-01-02 15:04:05" }}</td>
+                        <td>
+                            {{ if .ResolvedAt }}
+                                {{ .ResolvedAt.Format "2006-01-02 15:04:05" }}
+                            {{ else }}
+                                <span class="badge text-bg-danger">Open</span>
+                            {{ end }}
+                        </td>
+                        <td>
+                            {{ if .ResolvedAt }}
+                                {{ .ResolvedAt.Sub .StartedAt }}
+                            {{ else }}
+                                ongoing
+                            {{ end }}
+                        </td>
+                        <td class="small text-danger">{{ .ErrorMessage }}</td>
+                    </tr>
                     {{ else }}
-                    <span class="badge text-bg-danger">Down</span>
+                    <tr><td colspan="4" class="text-muted">No incidents recorded.</td></tr>
                     {{ end }}
-                </td>
-            </tr>
-            {{ else }}
-            <tr><td colspan="2" class="text-muted">No heartbeats recorded yet.</td></tr>
-            {{ end }}
-        </tbody>
-    </table>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{ if gt .IncidentsPagination.TotalPages 1 }}
+    <div class="card-footer bg-white">
+        {{ template "admin/pagination.html" .IncidentsPagination }}
+    </div>
+    {{ end }}
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="h5 mb-0">Heartbeat History</h3>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0 heartbeats-table">
+                <thead>
+                    <tr>
+                        <th>Checked At</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .Heartbeats }}
+                    <tr>
+                        <td class="text-nowrap">{{ .CheckedAt.Format "2006-01-02 15:04:05" }}</td>
+                        <td>
+                            {{ if .IsUp }}
+                            <span class="badge text-bg-success">Up</span>
+                            {{ else }}
+                            <span class="badge text-bg-danger">Down</span>
+                            {{ end }}
+                        </td>
+                    </tr>
+                    {{ else }}
+                    <tr><td colspan="2" class="text-muted">No heartbeats recorded yet.</td></tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{ if gt .HeartbeatsPagination.TotalPages 1 }}
+    <div class="card-footer bg-white">
+        {{ template "admin/pagination.html" .HeartbeatsPagination }}
+    </div>
+    {{ end }}
 </div>
 {{ end }}

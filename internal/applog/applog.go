@@ -126,11 +126,111 @@ func RecentMonitorRequests() []MonitorRequestEntry {
 	return out
 }
 
-// RecentErrors returns the most recent error records (at most maxEntries).
+// RecentErrors returns the most recent error records (at most maxEntries), newest first.
 func RecentErrors() []Entry {
 	errorMu.RLock()
 	defer errorMu.RUnlock()
-	return copyEntries(appErrors)
+	out := copyEntries(appErrors)
+	reverseEntries(out)
+	return out
+}
+
+// CountEvents returns how many application events are stored in memory.
+func CountEvents() int64 {
+	eventMu.RLock()
+	defer eventMu.RUnlock()
+	return int64(len(events))
+}
+
+// CountErrors returns how many error records are stored in memory.
+func CountErrors() int64 {
+	errorMu.RLock()
+	defer errorMu.RUnlock()
+	return int64(len(appErrors))
+}
+
+// CountMonitorRequests returns how many monitor HTTP requests are stored in memory.
+func CountMonitorRequests() int64 {
+	requestMu.RLock()
+	defer requestMu.RUnlock()
+	return int64(len(requests))
+}
+
+// EventsPage returns one page of application events ordered newest first.
+//
+// page is the one-based page number.
+// perPage is how many events each page contains.
+func EventsPage(page, perPage int) []EventEntry {
+	eventMu.RLock()
+	buf := copyEventEntries(events)
+	eventMu.RUnlock()
+
+	reverseEventEntries(buf)
+	return slicePage(buf, page, perPage)
+}
+
+// ErrorsPage returns one page of error records ordered newest first.
+//
+// page is the one-based page number.
+// perPage is how many errors each page contains.
+func ErrorsPage(page, perPage int) []Entry {
+	errorMu.RLock()
+	buf := copyEntries(appErrors)
+	errorMu.RUnlock()
+
+	reverseEntries(buf)
+	return slicePage(buf, page, perPage)
+}
+
+// MonitorRequestsPage returns one page of monitor HTTP requests ordered newest first.
+//
+// page is the one-based page number.
+// perPage is how many requests each page contains.
+func MonitorRequestsPage(page, perPage int) []MonitorRequestEntry {
+	requestMu.RLock()
+	buf := copyMonitorRequestEntries(requests)
+	requestMu.RUnlock()
+
+	reverseMonitorRequestEntries(buf)
+	return slicePage(buf, page, perPage)
+}
+
+// ClearAll removes all in-memory log buffers. Used by the Playwright test API.
+func ClearAll() {
+	logMu.Lock()
+	errorMu.Lock()
+	eventMu.Lock()
+	requestMu.Lock()
+	logs = nil
+	appErrors = nil
+	events = nil
+	requests = nil
+	requestMu.Unlock()
+	eventMu.Unlock()
+	errorMu.Unlock()
+	logMu.Unlock()
+}
+
+func slicePage[T any](items []T, page, perPage int) []T {
+	if perPage < 1 {
+		perPage = 1
+	}
+	if page < 1 {
+		page = 1
+	}
+	total := len(items)
+	if total == 0 {
+		return nil
+	}
+	offset := (page - 1) * perPage
+	if offset >= total {
+		return nil
+	}
+	end := offset + perPage
+	if end > total {
+		end = total
+	}
+	return items[offset:end]
 }
 
 func appendRing[T any](buf []T, entry T) []T {
