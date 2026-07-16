@@ -72,6 +72,48 @@ test.describe('Monitors', () => {
     await expect(page.getByText('https://example.com')).toBeVisible();
   });
 
+  test('deletes a monitor URL permanently', async ({ page, request }) => {
+    const monitorName = 'Delete Me';
+    const monitorUrl = 'https://delete-me.example.com';
+
+    await page.goto('/admin/monitors/new');
+    await page.locator('#name').fill(monitorName);
+    await page.locator('#url').fill(monitorUrl);
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page.getByText(monitorUrl)).toBeVisible();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO incidents (monitor_url_id, started_at, error_message)
+              SELECT id, NOW(), 'related incident' FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up)
+              SELECT id, NOW(), true FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+
+    page.on('dialog', (dialog) => dialog.accept());
+    await page.getByRole('row', { name: new RegExp(monitorName) }).getByRole('button', { name: 'Delete' }).click();
+
+    await expect(page).toHaveURL('/admin/monitors');
+    await expect(page.getByText('Deleted successfully.')).toBeVisible();
+    await expect(page.getByText(monitorUrl)).not.toBeVisible();
+
+    const monitors = await apiCall(request, 'sql', {
+      query: `SELECT id FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+    expect(monitors.rows ?? []).toEqual([]);
+
+    const checks = await apiCall(request, 'sql', {
+      query: `SELECT COUNT(*)::text AS count FROM monitor_checks`,
+    });
+    expect(checks.rows).toEqual([['0']]);
+
+    const incidents = await apiCall(request, 'sql', {
+      query: `SELECT COUNT(*)::text AS count FROM incidents`,
+    });
+    expect(incidents.rows).toEqual([['0']]);
+  });
+
   test('shows incidents on monitor detail page', async ({ page, request }) => {
     const monitorName = 'Incidents Test';
     const monitorUrl = 'https://incidents.example.com';

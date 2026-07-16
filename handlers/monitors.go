@@ -332,7 +332,8 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
-// DeleteMonitor removes a URL from monitoring.
+// DeleteMonitor permanently removes a monitored URL and cascaded related rows.
+// c is the Gin request context with the monitor id path parameter.
 func (h *Handler) DeleteMonitor(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
