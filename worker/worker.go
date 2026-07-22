@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"go-uptime/config"
@@ -19,22 +22,54 @@ import (
 
 const requestTimeout = 15 * time.Second
 
+// defaultCheckConcurrency is used when config omits or sets an invalid concurrency value.
+const defaultCheckConcurrency = 50
+
+// notifyQueueSize is the buffered capacity for async status-change alerts.
+const notifyQueueSize = 256
+
+// notifyJob is one monitor status-change alert to send off the check path.
+type notifyJob struct {
+	monitor models.MonitorURL
+	isUp    bool
+	errMsg  string
+}
+
 // MonitorWorker periodically checks URLs from the database.
 type MonitorWorker struct {
-	db                *gorm.DB
-	cfg               *config.Config
-	client            *http.Client
-	stop              chan struct{}
+	db               *gorm.DB
+	cfg              *config.Config
+	client           *http.Client
+	checkConcurrency int
+	notifyJobs       chan notifyJob
+	// notifySender delivers one alert; nil means the default Shoutrrr path.
+	notifySender func(monitor models.MonitorURL, isUp bool, errMsg string)
+
+	stop       chan struct{}
+	loopDone   chan struct{}
+	notifyDone chan struct{}
+	started    atomic.Bool
+	stopOnce   sync.Once
+
 	lastMaintenanceAt time.Time
 }
 
 // New creates a new background monitoring worker instance.
+// db is the GORM handle used to load monitors and persist check results.
+// cfg supplies retention settings and the maximum number of concurrent HTTP checks.
 func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
+	concurrency := defaultCheckConcurrency
+	if cfg != nil && cfg.CheckConcurrency > 0 {
+		concurrency = cfg.CheckConcurrency
+	}
+
 	return &MonitorWorker{
-		db:  db,
-		cfg: cfg,
+		db:               db,
+		cfg:              cfg,
+		checkConcurrency: concurrency,
 		client: &http.Client{
-			Timeout: requestTimeout,
+			Timeout:   requestTimeout,
+			Transport: newCheckTransport(concurrency),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 5 {
 					return fmt.Errorf("too many redirects")
@@ -42,13 +77,43 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 				return nil
 			},
 		},
-		stop: make(chan struct{}),
+		notifyJobs: make(chan notifyJob, notifyQueueSize),
+		stop:       make(chan struct{}),
+		loopDone:   make(chan struct{}),
+		notifyDone: make(chan struct{}),
 	}
 }
 
-// Start runs the check loop in a separate goroutine.
+// newCheckTransport builds an HTTP transport sized for concurrent monitor checks.
+// maxConcurrent is the configured check concurrency used to size connection pools.
+func newCheckTransport(maxConcurrent int) *http.Transport {
+	idleConns := maxConcurrent * 2
+	if idleConns < 100 {
+		idleConns = 100
+	}
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          idleConns,
+		MaxIdleConnsPerHost:   10,
+		MaxConnsPerHost:       0,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+// Start runs the check loop and async notification sender in separate goroutines.
 func (w *MonitorWorker) Start() {
+	if !w.started.CompareAndSwap(false, true) {
+		return
+	}
 	go w.backfillUptimeStatsIfNeeded()
+	go w.notifyLoop()
 	go w.loop()
 }
 
@@ -68,12 +133,22 @@ func (w *MonitorWorker) backfillUptimeStatsIfNeeded() {
 	}
 }
 
-// Stop stops the worker.
+// Stop stops the check loop, drains queued notifications, then returns.
 func (w *MonitorWorker) Stop() {
-	close(w.stop)
+	w.stopOnce.Do(func() {
+		if !w.started.Load() {
+			return
+		}
+		close(w.stop)
+		<-w.loopDone
+		close(w.notifyJobs)
+		<-w.notifyDone
+	})
 }
 
 func (w *MonitorWorker) loop() {
+	defer close(w.loopDone)
+
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -89,6 +164,52 @@ func (w *MonitorWorker) loop() {
 	}
 }
 
+// notifyLoop sends queued status-change alerts so SMTP/Telegram never block HTTP checks.
+func (w *MonitorWorker) notifyLoop() {
+	defer close(w.notifyDone)
+
+	for job := range w.notifyJobs {
+		w.deliverNotification(job.monitor, job.isUp, job.errMsg)
+	}
+}
+
+// enqueueNotification queues a status-change alert without waiting for delivery.
+// monitor is the monitor that changed state; isUp is the new availability;
+// errMsg is the down reason (empty when the monitor recovered).
+func (w *MonitorWorker) enqueueNotification(monitor models.MonitorURL, isUp bool, errMsg string) {
+	if !monitor.NotifyTelegram && !monitor.NotifySMTP {
+		return
+	}
+
+	job := notifyJob{
+		monitor: monitor,
+		isUp:    isUp,
+		errMsg:  errMsg,
+	}
+	select {
+	case w.notifyJobs <- job:
+	default:
+		log.Warn().
+			Uint("monitor_id", monitor.ID).
+			Msg("notification queue full, dropping alert")
+		applog.AddError(
+			"notification queue full",
+			fmt.Sprintf("monitor_id=%d dropped alert", monitor.ID),
+		)
+	}
+}
+
+// deliverNotification sends one queued alert via the injected sender or the default path.
+// monitor is the monitor that changed state; isUp is the new availability;
+// errMsg is the down reason (empty when the monitor recovered).
+func (w *MonitorWorker) deliverNotification(monitor models.MonitorURL, isUp bool, errMsg string) {
+	if w.notifySender != nil {
+		w.notifySender(monitor, isUp, errMsg)
+		return
+	}
+	w.sendNotifications(monitor, isUp, errMsg)
+}
+
 // runDueMonitors checks monitors whose individual interval has elapsed and runs periodic maintenance.
 func (w *MonitorWorker) runDueMonitors() {
 	var monitors []models.MonitorURL
@@ -101,15 +222,46 @@ func (w *MonitorWorker) runDueMonitors() {
 	now := time.Now()
 	globalIntervalSeconds := models.GetCheckIntervalSeconds(w.db)
 
+	due := make([]models.MonitorURL, 0)
 	for _, monitor := range monitors {
 		intervalSeconds := models.MonitorCheckIntervalSeconds(monitor, globalIntervalSeconds)
 		if !isMonitorDue(monitor.LastCheckedAt, time.Duration(intervalSeconds)*time.Second, now) {
 			continue
 		}
-		w.checkMonitor(monitor)
+		due = append(due, monitor)
 	}
 
+	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor)
+
 	w.runMaintenanceIfDue(now)
+}
+
+// runChecksConcurrently runs checkFn for each monitor with at most maxConcurrent goroutines.
+// monitors is the list of due monitors to check in this wave.
+// maxConcurrent caps how many HTTP checks may run at the same time; values below 1 become 1.
+// checkFn performs one monitor check and must be safe to call concurrently.
+func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, checkFn func(models.MonitorURL)) {
+	if len(monitors) == 0 {
+		return
+	}
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+
+	for _, monitor := range monitors {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(m models.MonitorURL) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			checkFn(m)
+		}(monitor)
+	}
+
+	wg.Wait()
 }
 
 // isMonitorDue reports whether a monitor should be checked at now based on its last check time.
@@ -231,7 +383,7 @@ func (w *MonitorWorker) markUp(monitor models.MonitorURL, checkedAt time.Time, r
 
 	if wasDown {
 		applog.AddEvent("monitor", fmt.Sprintf("Monitor %q (%s) is UP", models.MonitorDisplayName(monitor), monitor.URL))
-		w.sendNotifications(monitor, true, "")
+		w.enqueueNotification(monitor, true, "")
 	}
 }
 
@@ -270,7 +422,7 @@ func (w *MonitorWorker) markDown(monitor models.MonitorURL, errMsg string, respo
 
 	if wasUp {
 		applog.AddEvent("monitor", fmt.Sprintf("Monitor %q (%s) is DOWN: %s", models.MonitorDisplayName(monitor), monitor.URL, errMsg))
-		w.sendNotifications(monitor, false, errMsg)
+		w.enqueueNotification(monitor, false, errMsg)
 	}
 }
 
@@ -281,6 +433,7 @@ func (w *MonitorWorker) recordCheck(monitorID uint, checkedAt time.Time, isUp bo
 }
 
 // sendNotifications sends status-change notifications when channels are configured and enabled for the monitor.
+// monitor is the monitor that changed; isUp is the new state; errMsg explains a down transition.
 func (w *MonitorWorker) sendNotifications(monitor models.MonitorURL, isUp bool, errMsg string) {
 	if !monitor.NotifyTelegram && !monitor.NotifySMTP {
 		return

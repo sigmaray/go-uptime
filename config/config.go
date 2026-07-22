@@ -23,6 +23,9 @@ type Config struct {
 	// MaxResolvedIncidentsPerMonitor is the limit of resolved incidents per URL.
 	MaxResolvedIncidentsPerMonitor int `envconfig:"GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR" default:"100"`
 
+	// CheckConcurrency is how many HTTP monitor checks may run at once.
+	CheckConcurrency int `envconfig:"GO_UPTIME_CHECK_CONCURRENCY" default:"50"`
+
 	EnablePlaywrightAPI bool `envconfig:"GO_UPTIME_ENABLE_PLAYWRIGHT_API" default:"false"`
 
 	Database DatabaseConfig
