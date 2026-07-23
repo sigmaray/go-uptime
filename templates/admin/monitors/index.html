@@ -7,13 +7,43 @@
     <table class="table table-striped monitors-table">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>URL</th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "Name" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "Name" }}" aria-label="Sort by Name ascending">↑</a>
+                        <span class="table-sort__label">Name</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "Name" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "Name" }}" aria-label="Sort by Name descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "URL" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "URL" }}" aria-label="Sort by URL ascending">↑</a>
+                        <span class="table-sort__label">URL</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "URL" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "URL" }}" aria-label="Sort by URL descending">↓</a>
+                    </span>
+                </th>
                 <th>Last 30 min</th>
                 <th>Uptime</th>
-                <th>Status</th>
-                <th>Last Check</th>
-                <th>Error</th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "IsUp" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "IsUp" }}" aria-label="Sort by Status ascending">↑</a>
+                        <span class="table-sort__label">Status</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "IsUp" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "IsUp" }}" aria-label="Sort by Status descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "LastCheckedAt" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "LastCheckedAt" }}" aria-label="Sort by Last Check ascending">↑</a>
+                        <span class="table-sort__label">Last Check</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "LastCheckedAt" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "LastCheckedAt" }}" aria-label="Sort by Last Check descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "LastError" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "LastError" }}" aria-label="Sort by Error ascending">↑</a>
+                        <span class="table-sort__label">Error</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "LastError" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "LastError" }}" aria-label="Sort by Error descending">↓</a>
+                    </span>
+                </th>
                 <th></th>
             </tr>
         </thead>

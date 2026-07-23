@@ -5,10 +5,34 @@
     <table class="table table-sm table-striped heartbeats-table">
         <thead>
             <tr>
-                <th>Monitor</th>
-                <th>Checked At</th>
-                <th>Response Time</th>
-                <th>Status</th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "MonitorURL" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "MonitorURL" }}" aria-label="Sort by Monitor ascending">↑</a>
+                        <span class="table-sort__label">Monitor</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "MonitorURL" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "MonitorURL" }}" aria-label="Sort by Monitor descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "CheckedAt" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "CheckedAt" }}" aria-label="Sort by Checked At ascending">↑</a>
+                        <span class="table-sort__label">Checked At</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "CheckedAt" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "CheckedAt" }}" aria-label="Sort by Checked At descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "ResponseTimeMs" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "ResponseTimeMs" }}" aria-label="Sort by Response Time ascending">↑</a>
+                        <span class="table-sort__label">Response Time</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "ResponseTimeMs" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "ResponseTimeMs" }}" aria-label="Sort by Response Time descending">↓</a>
+                    </span>
+                </th>
+                <th>
+                    <span class="table-sort">
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "IsUp" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "IsUp" }}" aria-label="Sort by Status ascending">↑</a>
+                        <span class="table-sort__label">Status</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "IsUp" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "IsUp" }}" aria-label="Sort by Status descending">↓</a>
+                    </span>
+                </th>
             </tr>
         </thead>
         <tbody>

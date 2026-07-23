@@ -95,3 +95,31 @@
 .monitor-notifications__option + .monitor-notifications__option {
     margin-top: 0.5rem;
 }
+
+.table-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+.table-sort__link {
+    color: #6c757d;
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    padding: 0.1rem 0.2rem;
+    border-radius: 0.2rem;
+}
+
+.table-sort__link:hover {
+    color: #212529;
+    text-decoration: none;
+}
+
+.table-sort__link--active {
+    color: #084298;
+    background-color: #cfe2ff;
+    font-weight: 800;
+}

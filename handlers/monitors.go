@@ -23,6 +23,15 @@ type MonitorListItem struct {
 func (h *Handler) MonitorsList(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
+	sort := ParseListSort(
+		"/admin/monitors",
+		models.MonitorURL{},
+		"monitor_urls.created_at desc, monitor_urls.id asc",
+		c.Query("sort"),
+		c.Query("order"),
+		"Name", "URL", "IsUp", "LastCheckedAt", "LastError",
+	)
+	now := time.Now()
 
 	var total int64
 	if err := h.DB.Model(&models.MonitorURL{}).Count(&total).Error; err != nil {
@@ -32,15 +41,14 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	page = models.ClampPage(page, total, perPage)
 
 	var monitors []models.MonitorURL
-	if err := h.DB.Order("created_at desc").
+	query := sort.Apply(h.DB.Model(&models.MonitorURL{}))
+	if err := query.
 		Offset(models.PageOffset(page, perPage)).
 		Limit(perPage).
 		Find(&monitors).Error; err != nil {
 		applog.AddError("failed to load monitors", err.Error())
 		monitors = nil
 	}
-
-	now := time.Now()
 
 	monitorIDs := make([]uint, 0, len(monitors))
 	createdAtByID := make(map[uint]time.Time, len(monitors))
@@ -70,13 +78,12 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		})
 	}
 
-	pagination := buildPaginationView(total, page, perPage, "Monitors", func(p int) string {
-		return buildAdminListURL("/admin/monitors", p)
-	})
+	pagination := buildPaginationView(total, page, perPage, "Monitors", sort.PageURL)
 
 	h.renderPage(c, http.StatusOK, "admin/monitors/index.html", gin.H{
 		"Monitors":   items,
 		"Pagination": pagination,
+		"Sort":       sort,
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 

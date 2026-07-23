@@ -54,11 +54,30 @@ func buildMonitorShowURL(monitorID uint, incidentsPage, heartbeatsPage int) stri
 }
 
 // buildAdminListURL builds a paginated admin list URL using the page query param.
+// path is the admin list path such as "/admin/users".
+// page is the one-based page number; page 1 omits the query string.
 func buildAdminListURL(path string, page int) string {
-	if page <= 1 {
+	return buildAdminListURLWithQuery(path, page, nil)
+}
+
+// buildAdminListURLWithQuery builds an admin list URL with page and extra query parameters.
+// path is the admin list path such as "/admin/monitors".
+// page is the one-based page number; page 1 omits the page parameter.
+// query holds additional parameters such as sort and order; nil or empty is allowed.
+func buildAdminListURLWithQuery(path string, page int, query url.Values) string {
+	q := url.Values{}
+	for key, values := range query {
+		for _, value := range values {
+			q.Add(key, value)
+		}
+	}
+	if page > 1 {
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
 		return path
 	}
-	return path + "?page=" + strconv.Itoa(page)
+	return path + "?" + q.Encode()
 }
 
 // buildPaginationView prepares template data for a paginated list section.
