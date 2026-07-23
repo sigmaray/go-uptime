@@ -28,6 +28,17 @@ const defaultCheckConcurrency = 50
 // notifyQueueSize is the buffered capacity for async status-change alerts.
 const notifyQueueSize = 256
 
+// browserLikeUserAgent mimics a common desktop Chrome browser so WAF / bot filters
+// are less likely to reject checks solely because of an obvious monitor User-Agent.
+const browserLikeUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+// browserLikeAccept is a typical browser Accept header for a top-level document navigation.
+const browserLikeAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+
+// browserLikeAcceptLanguage prefers English and Russian so localized sites still treat the
+// request as a normal browser visit from an international client.
+const browserLikeAcceptLanguage = "en-US,en;q=0.9,ru;q=0.8"
+
 // notifyJob is one monitor status-change alert to send off the check path.
 type notifyJob struct {
 	monitor models.MonitorURL
@@ -313,7 +324,7 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 		w.markDown(monitor, err.Error(), intPtr(int(elapsed)))
 		return
 	}
-	req.Header.Set("User-Agent", "go-uptime-monitor/1.0")
+	setBrowserLikeHeaders(req)
 
 	resp, err := w.client.Do(req)
 	elapsed := time.Since(start).Milliseconds()
@@ -339,6 +350,15 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 
 func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
 	applog.AddMonitorRequest(monitorName, url, statusCode, responseTimeMs, isUp, errMsg)
+}
+
+// setBrowserLikeHeaders attaches request headers that resemble a normal browser GET.
+// req is the outbound monitor check request that will be sent by the HTTP client.
+// This reduces false downs from simple bot filters that reject custom monitor User-Agents.
+func setBrowserLikeHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", browserLikeUserAgent)
+	req.Header.Set("Accept", browserLikeAccept)
+	req.Header.Set("Accept-Language", browserLikeAcceptLanguage)
 }
 
 func intPtr(v int) *int {

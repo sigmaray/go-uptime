@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,25 @@ import (
 	"go-uptime/config"
 	"go-uptime/models"
 )
+
+func TestSetBrowserLikeHeaders(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	setBrowserLikeHeaders(req)
+
+	if got := req.Header.Get("User-Agent"); got != browserLikeUserAgent {
+		t.Fatalf("User-Agent = %q, want %q", got, browserLikeUserAgent)
+	}
+	if got := req.Header.Get("Accept"); got != browserLikeAccept {
+		t.Fatalf("Accept = %q, want %q", got, browserLikeAccept)
+	}
+	if got := req.Header.Get("Accept-Language"); got != browserLikeAcceptLanguage {
+		t.Fatalf("Accept-Language = %q, want %q", got, browserLikeAcceptLanguage)
+	}
+}
 
 func TestShouldNotifyStateChange(t *testing.T) {
 	up := true
