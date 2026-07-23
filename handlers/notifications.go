@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,7 @@ func (h *Handler) monitorNotificationContext() (models.NotificationSettings, gin
 }
 
 // bindMonitorNotificationFlags reads notify_* flags from the form, respecting system settings.
-func (h *Handler) bindMonitorNotificationFlags(c *gin.Context, input *models.MonitorURLInput) error {
+func (h *Handler) bindMonitorNotificationFlags(c *gin.Context, input *forms.MonitorURLInput) error {
 	settings, err := models.LoadNotificationSettings(h.DB)
 	if err != nil {
 		return err

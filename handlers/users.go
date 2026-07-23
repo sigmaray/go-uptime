@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"go-uptime/internal/applog"
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +53,7 @@ func (h *Handler) NewUserPage(c *gin.Context) {
 
 // CreateUser handles user creation.
 func (h *Handler) CreateUser(c *gin.Context) {
-	var input models.CreateUserInput
+	var input forms.CreateUserInput
 	if err := c.ShouldBind(&input); err != nil {
 		h.renderPage(c, http.StatusBadRequest, "admin/users/new.html", gin.H{
 			"Error":    "Invalid form data",
@@ -62,7 +63,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 	if err := input.Validate(); err != nil {
 		h.renderPage(c, http.StatusBadRequest, "admin/users/new.html", gin.H{
-			"Error":    models.FormatValidationError(err),
+			"Error":    forms.FormatValidationError(err),
 			"Username": input.Username,
 		}, PageOptions{Title: "Create User", ActiveNav: "users"})
 		return
@@ -114,7 +115,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var input models.UpdateUserInput
+	var input forms.UpdateUserInput
 	if err := c.ShouldBind(&input); err != nil {
 		h.renderPage(c, http.StatusBadRequest, "admin/users/edit.html", gin.H{
 			"Error": "Invalid form data",
@@ -125,7 +126,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	if err := input.Validate(); err != nil {
 		user.Username = input.Username
 		h.renderPage(c, http.StatusBadRequest, "admin/users/edit.html", gin.H{
-			"Error": models.FormatValidationError(err),
+			"Error": forms.FormatValidationError(err),
 			"User":  user,
 		}, PageOptions{Title: "Edit User", ActiveNav: "users"})
 		return

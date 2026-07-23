@@ -11,6 +11,51 @@ import (
 	"go-uptime/models"
 )
 
+func TestMonitorWorkerRunning(t *testing.T) {
+	var nilWorker *MonitorWorker
+	if nilWorker.Running() {
+		t.Fatal("nil worker should not be running")
+	}
+
+	w := New(nil, &config.Config{CheckConcurrency: 1})
+	if w.Running() {
+		t.Fatal("expected worker not running before Start")
+	}
+
+	// Simulate an active worker without launching DB-backed loops.
+	w.started.Store(true)
+	if !w.Running() {
+		t.Fatal("expected worker running while started and stop channel open")
+	}
+
+	close(w.stop)
+	if w.Running() {
+		t.Fatal("expected worker not running after stop channel closed")
+	}
+}
+
+func TestMonitorWorkerPauseSkipsDueMonitors(t *testing.T) {
+	var nilWorker *MonitorWorker
+	nilWorker.Pause()
+	nilWorker.Resume()
+	if nilWorker.Paused() {
+		t.Fatal("nil worker should not report paused")
+	}
+
+	w := New(nil, &config.Config{CheckConcurrency: 1})
+	w.Pause()
+	if !w.Paused() {
+		t.Fatal("expected worker paused after Pause")
+	}
+	// Must not touch the nil DB when paused.
+	w.runDueMonitors()
+
+	w.Resume()
+	if w.Paused() {
+		t.Fatal("expected worker not paused after Resume")
+	}
+}
+
 func TestSetBrowserLikeHeaders(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "https://example.com/", nil)
 	if err != nil {

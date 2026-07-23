@@ -13,8 +13,3 @@ func (h *Handler) AdminDashboard(c *gin.Context) {
 		ActiveNav: "dashboard",
 	})
 }
-
-// Health returns server health status.
-func (h *Handler) Health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}

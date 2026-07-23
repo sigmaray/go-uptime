@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"go-uptime/internal/applog"
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ func (h *Handler) SettingsPage(c *gin.Context) {
 
 // UpdateSettings saves monitoring settings from the settings form.
 func (h *Handler) UpdateSettings(c *gin.Context) {
-	var input models.SettingsInput
+	var input forms.SettingsInput
 	if err := c.ShouldBind(&input); err != nil {
 		interval := models.GetCheckIntervalSeconds(h.DB)
 		notifications, _ := models.LoadNotificationSettings(h.DB)
@@ -39,7 +40,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	if err := input.Validate(); err != nil {
 		interval := models.GetCheckIntervalSeconds(h.DB)
 		data := h.settingsPageData(interval, notificationSettingsFromInput(input))
-		data["Error"] = models.FormatValidationError(err)
+		data["Error"] = forms.FormatValidationError(err)
 		h.renderPage(c, http.StatusBadRequest, "admin/settings/index.html", data, PageOptions{Title: "Settings", ActiveNav: "settings"})
 		return
 	}
@@ -65,7 +66,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 }
 
 // notificationSettingsFromInput maps submitted form values to notification settings.
-func notificationSettingsFromInput(input models.SettingsInput) models.NotificationSettings {
+func notificationSettingsFromInput(input forms.SettingsInput) models.NotificationSettings {
 	return models.NotificationSettings{
 		TelegramURL:  input.TelegramURL,
 		SMTPHost:     input.SMTPHost,

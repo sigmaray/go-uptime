@@ -2,48 +2,11 @@ package models
 
 import (
 	"errors"
-	"strconv"
-	"time"
+	"net/url"
+	"strings"
 
 	"gorm.io/gorm"
 )
-
-// PruneIncidents deletes old resolved incidents to limit data growth.
-// db is the database handle used for deletions.
-// retentionDays controls how long resolved incidents are kept.
-// maxPerMonitor limits how many resolved incidents each monitor may retain.
-func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
-	cutoff := time.Now().AddDate(0, 0, -retentionDays)
-	if err := db.Where("resolved_at IS NOT NULL AND resolved_at < ?", cutoff).
-		Delete(&Incident{}).Error; err != nil {
-		return err
-	}
-
-	var monitorIDs []uint
-	if err := db.Model(&MonitorURL{}).Pluck("id", &monitorIDs).Error; err != nil {
-		return err
-	}
-
-	for _, id := range monitorIDs {
-		var excess []uint
-		err := db.Model(&Incident{}).
-			Where("monitor_url_id = ? AND resolved_at IS NOT NULL", id).
-			Order("resolved_at DESC").
-			Offset(maxPerMonitor).
-			Pluck("id", &excess).Error
-		if err != nil {
-			return err
-		}
-		if len(excess) == 0 {
-			continue
-		}
-		if err := db.Delete(&Incident{}, excess).Error; err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
 
 // MonitorCheckIntervalSeconds returns the effective check interval for a monitor.
 // monitor is the monitored URL whose optional override is inspected.
@@ -55,13 +18,36 @@ func MonitorCheckIntervalSeconds(monitor MonitorURL, globalSeconds int) int {
 	return globalSeconds
 }
 
-// CheckIntervalSecondsFormValue returns the monitor interval for HTML forms.
-// An empty string means the monitor inherits the global setting.
-func (m MonitorURL) CheckIntervalSecondsFormValue() string {
-	if m.CheckIntervalSeconds == nil {
-		return ""
+// DefaultMonitorName returns the site hostname from rawURL when no display name is provided.
+// rawURL is the monitor target URL used to derive a fallback name.
+func DefaultMonitorName(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return trimmed
 	}
-	return strconv.Itoa(*m.CheckIntervalSeconds)
+	return parsed.Host
+}
+
+// MonitorDisplayName returns the configured name or falls back to the URL hostname.
+// monitor is the monitored URL whose display name is resolved.
+func MonitorDisplayName(monitor MonitorURL) string {
+	name := strings.TrimSpace(monitor.Name)
+	if name != "" {
+		return name
+	}
+	return DefaultMonitorName(monitor.URL)
+}
+
+// ResolveMonitorName returns trimmed name or the default derived from rawURL.
+// name is the optional user-provided display name.
+// rawURL is used when name is empty.
+func ResolveMonitorName(name, rawURL string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed != "" {
+		return trimmed
+	}
+	return DefaultMonitorName(rawURL)
 }
 
 // SeedMonitorURLs creates demonstration URLs for monitoring.

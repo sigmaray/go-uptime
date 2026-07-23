@@ -43,15 +43,6 @@ func TestUptimeSummaryPercent(t *testing.T) {
 	}
 }
 
-func TestFormatUptimePercent(t *testing.T) {
-	if got := FormatUptimePercent(UptimeSummary{}); got != "—" {
-		t.Fatalf("FormatUptimePercent empty = %q, want dash", got)
-	}
-	if got := FormatUptimePercent(UptimeSummary{UpSeconds: 90, TotalSeconds: 100}); got != "90.00%" {
-		t.Fatalf("FormatUptimePercent = %q, want 90.00%%", got)
-	}
-}
-
 func TestUptimePeriodEligible(t *testing.T) {
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
 	period := 24 * time.Hour

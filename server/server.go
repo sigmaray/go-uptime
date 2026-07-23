@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -126,6 +127,12 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		}
 	}
 
+	// Playwright e2e truncates tables and seeds in-memory logs while the process runs.
+	// Keep the worker "running" for /health, but pause checks so they cannot race clears
+	// or append extra heartbeats / monitor-request rows mid-assertion.
+	if cfg.EnablePlaywrightAPI {
+		monitorWorker.Pause()
+	}
 	monitorWorker.Start()
 	defer monitorWorker.Stop()
 
@@ -180,12 +187,13 @@ func (applogHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 
 func loadHTMLTemplates(r *gin.Engine) *template.Template {
 	funcMap := template.FuncMap{
-		"monitorStatus":       monitorStatusLabel,
-		"monitorStatusClass":  monitorStatusClass,
-		"monitorDisplayName":  models.MonitorDisplayName,
-		"formatUptimePercent": models.FormatUptimePercent,
-		"uptimePercentClass":  uptimePercentClass,
-		"formatResponseTime":  formatResponseTime,
+		"monitorStatus":          monitorStatusLabel,
+		"monitorStatusClass":     monitorStatusClass,
+		"monitorDisplayName":     models.MonitorDisplayName,
+		"formatUptimePercent":    formatUptimePercent,
+		"checkIntervalFormValue": checkIntervalFormValue,
+		"uptimePercentClass":     uptimePercentClass,
+		"formatResponseTime":     formatResponseTime,
 	}
 
 	files := []string{"templates/admin/layout.html"}
@@ -235,6 +243,24 @@ func formatResponseTime(ms *int) string {
 		return "—"
 	}
 	return fmt.Sprintf("%d ms", *ms)
+}
+
+// formatUptimePercent renders an uptime percentage string or a dash when data is missing.
+// summary is the aggregated uptime window shown in admin templates.
+func formatUptimePercent(summary models.UptimeSummary) string {
+	if !summary.HasData() {
+		return "—"
+	}
+	return fmt.Sprintf("%.2f%%", summary.Percent())
+}
+
+// checkIntervalFormValue returns the monitor interval for HTML forms.
+// monitor is the MonitorURL being edited; an empty string means inherit the global setting.
+func checkIntervalFormValue(monitor models.MonitorURL) string {
+	if monitor.CheckIntervalSeconds == nil {
+		return ""
+	}
+	return strconv.Itoa(*monitor.CheckIntervalSeconds)
 }
 
 // uptimePercentClass returns a Bootstrap text color class for an uptime percentage value.

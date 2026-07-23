@@ -68,18 +68,3 @@ func TestBuildSMTPShoutrrrURLIncomplete(t *testing.T) {
 		t.Fatal("expected error for incomplete smtp settings")
 	}
 }
-
-func TestValidateTelegramShoutrrrURL(t *testing.T) {
-	input := SettingsInput{
-		CheckIntervalSeconds: 60,
-		TelegramURL:          "https://example.com",
-	}
-	if err := input.Validate(); err == nil {
-		t.Fatal("expected validation error for non-telegram URL")
-	}
-
-	input.TelegramURL = "telegram://token@telegram?channels=123"
-	if err := input.Validate(); err != nil {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}

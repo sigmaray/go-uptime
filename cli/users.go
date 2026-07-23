@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go-uptime/internal/cliutil"
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/rs/zerolog/log"
@@ -34,7 +35,7 @@ func UsersSeed(db *gorm.DB) {
 		return
 	}
 
-	input := models.CreateUserInput{Username: "admin", Password: "admin", ConfirmPassword: "admin"}
+	input := forms.CreateUserInput{Username: "admin", Password: "admin", ConfirmPassword: "admin"}
 	// UsersSeed intentionally bypasses validation to allow the documented insecure admin/admin credentials.
 	user, err := models.CreateUser(db, input.Username, input.Password)
 	if err != nil {
@@ -51,9 +52,9 @@ func UsersCreate(db *gorm.DB) {
 	password := readPassword("Password: ")
 	confirm := readPassword("Confirm password: ")
 
-	input := models.CreateUserInput{Username: username, Password: password, ConfirmPassword: confirm}
+	input := forms.CreateUserInput{Username: username, Password: password, ConfirmPassword: confirm}
 	if err := input.Validate(); err != nil {
-		log.Fatal().Str("error", models.FormatValidationError(err)).Msg("invalid input")
+		log.Fatal().Str("error", forms.FormatValidationError(err)).Msg("invalid input")
 	}
 
 	user, err := models.CreateUser(db, input.Username, input.Password)

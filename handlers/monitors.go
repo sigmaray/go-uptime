@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go-uptime/internal/applog"
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -111,7 +112,7 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 
 // CreateMonitor handles URL creation.
 func (h *Handler) CreateMonitor(c *gin.Context) {
-	var input models.MonitorURLInput
+	var input forms.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
@@ -130,7 +131,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	if err := input.Validate(); err != nil {
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
-			"Error":              models.FormatValidationError(err),
+			"Error":              forms.FormatValidationError(err),
 			"Input":              input,
 			"NotifyTelegram":     input.NotifyTelegram,
 			"NotifySMTP":         input.NotifySMTP,
@@ -285,7 +286,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		return
 	}
 
-	var input models.MonitorURLInput
+	var input forms.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
@@ -310,7 +311,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		}
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
-			"Error":              models.FormatValidationError(err),
+			"Error":              forms.FormatValidationError(err),
 			"Monitor":            monitor,
 			"NotifyTelegram":     input.NotifyTelegram,
 			"NotifySMTP":         input.NotifySMTP,

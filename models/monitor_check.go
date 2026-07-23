@@ -1,8 +1,6 @@
 package models
 
 import (
-	"net/url"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -32,35 +30,12 @@ type MonitorCheck struct {
 	ResponseTimeMs *int
 }
 
-// DefaultMonitorName returns the site hostname from rawURL when no display name is provided.
-func DefaultMonitorName(rawURL string) string {
-	trimmed := strings.TrimSpace(rawURL)
-	parsed, err := url.Parse(trimmed)
-	if err != nil || parsed.Host == "" {
-		return trimmed
-	}
-	return parsed.Host
-}
-
-// MonitorDisplayName returns the configured name or falls back to the URL hostname.
-func MonitorDisplayName(monitor MonitorURL) string {
-	name := strings.TrimSpace(monitor.Name)
-	if name != "" {
-		return name
-	}
-	return DefaultMonitorName(monitor.URL)
-}
-
-// ResolveMonitorName returns trimmed name or the default derived from rawURL.
-func ResolveMonitorName(name, rawURL string) string {
-	trimmed := strings.TrimSpace(name)
-	if trimmed != "" {
-		return trimmed
-	}
-	return DefaultMonitorName(rawURL)
-}
-
 // RecordMonitorCheck persists one check result for uptime history and updates aggregated uptime stats.
+// db is the database handle used for persistence.
+// monitorID is the monitor_urls.id that was checked.
+// checkedAt is when the check finished.
+// isUp is whether the target responded successfully.
+// responseTimeMs is the optional measured latency in milliseconds.
 func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bool, responseTimeMs *int) error {
 	if err := UpdateUptimeStats(db, monitorID, checkedAt, isUp); err != nil {
 		return err

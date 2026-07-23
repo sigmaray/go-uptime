@@ -1,4 +1,4 @@
-// Package models contains GORM models and data access business logic.
+// Package models contains GORM persistence models and database access helpers.
 package models
 
 import (

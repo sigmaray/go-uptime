@@ -6,6 +6,7 @@ import (
 
 	"go-uptime/database"
 	"go-uptime/internal/applog"
+	"go-uptime/internal/forms"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -78,13 +79,13 @@ func (h *Handler) PlaywrightCreateUser(c *gin.Context) {
 		return
 	}
 
-	input := models.CreateUserInput{
+	input := forms.CreateUserInput{
 		Username:        req.Username,
 		Password:        req.Password,
 		ConfirmPassword: req.Password,
 	}
 	if err := input.Validate(); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": models.FormatValidationError(err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": forms.FormatValidationError(err)})
 		return
 	}
 
