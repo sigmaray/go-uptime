@@ -19,14 +19,20 @@ func TestSetBrowserLikeHeaders(t *testing.T) {
 
 	setBrowserLikeHeaders(req)
 
-	if got := req.Header.Get("User-Agent"); got != browserLikeUserAgent {
-		t.Fatalf("User-Agent = %q, want %q", got, browserLikeUserAgent)
+	want := map[string]string{
+		"User-Agent":                browserLikeUserAgent,
+		"Accept":                    browserLikeAccept,
+		"Accept-Language":           browserLikeAcceptLanguage,
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
 	}
-	if got := req.Header.Get("Accept"); got != browserLikeAccept {
-		t.Fatalf("Accept = %q, want %q", got, browserLikeAccept)
-	}
-	if got := req.Header.Get("Accept-Language"); got != browserLikeAcceptLanguage {
-		t.Fatalf("Accept-Language = %q, want %q", got, browserLikeAcceptLanguage)
+	for name, expected := range want {
+		if got := req.Header.Get(name); got != expected {
+			t.Fatalf("%s = %q, want %q", name, got, expected)
+		}
 	}
 }
 

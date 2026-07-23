@@ -355,10 +355,17 @@ func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode
 // setBrowserLikeHeaders attaches request headers that resemble a normal browser GET.
 // req is the outbound monitor check request that will be sent by the HTTP client.
 // This reduces false downs from simple bot filters that reject custom monitor User-Agents.
+// Meta properties (for example WhatsApp) return HTTP 400 for a Chrome User-Agent without
+// Sec-Fetch-* navigation headers, so those are included as well.
 func setBrowserLikeHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", browserLikeUserAgent)
 	req.Header.Set("Accept", browserLikeAccept)
 	req.Header.Set("Accept-Language", browserLikeAcceptLanguage)
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-User", "?1")
 }
 
 func intPtr(v int) *int {
