@@ -25,9 +25,13 @@ async function expectAdminListPagination(
   label: string,
   tableSelector: string,
   page2RowCount: number,
+  totalCountText?: string,
 ) {
   await page.goto(path);
   await expect(page.locator(`${tableSelector} tbody tr`)).toHaveCount(100);
+  if (totalCountText) {
+    await expect(page.getByText(totalCountText, { exact: true })).toBeVisible();
+  }
 
   const pagination = page.getByLabel(`${label} pagination`);
   await expect(pagination.getByRole('link', { name: '2', exact: true })).toBeVisible();
@@ -36,6 +40,9 @@ async function expectAdminListPagination(
   await pagination.getByRole('link', { name: '2', exact: true }).click();
   await expect(page).toHaveURL(`${path}?page=2`);
   await expect(page.locator(`${tableSelector} tbody tr`)).toHaveCount(page2RowCount);
+  if (totalCountText) {
+    await expect(page.getByText(totalCountText, { exact: true })).toBeVisible();
+  }
 }
 
 test.describe('Admin list pagination', () => {
@@ -47,7 +54,8 @@ test.describe('Admin list pagination', () => {
               FROM generate_series(1, 101) AS n`,
     });
 
-    await expectAdminListPagination(page, '/admin/users', 'Users', '.users-table', 2);
+    // login creates one admin user, then 101 more are inserted
+    await expectAdminListPagination(page, '/admin/users', 'Users', '.users-table', 2, '102 users.');
   });
 
   test('paginates monitors', async ({ page, request }) => {
@@ -59,7 +67,7 @@ test.describe('Admin list pagination', () => {
               FROM generate_series(1, 101) AS n`,
     });
 
-    await expectAdminListPagination(page, '/admin/monitors', 'Monitors', '.monitors-table', 1);
+    await expectAdminListPagination(page, '/admin/monitors', 'Monitors', '.monitors-table', 1, '101 monitors.');
   });
 
   test('paginates heartbeats', async ({ page, request }) => {
@@ -97,7 +105,7 @@ test.describe('Admin list pagination', () => {
               WHERE m.url = 'https://inc-pagination.example.com'`,
     });
 
-    await expectAdminListPagination(page, '/admin/incidents', 'Incidents', '.incidents-table', 1);
+    await expectAdminListPagination(page, '/admin/incidents', 'Incidents', '.incidents-table', 1, '101 incidents.');
   });
 
   test('paginates application logs', async ({ page, request }) => {
