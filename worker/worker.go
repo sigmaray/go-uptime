@@ -46,6 +46,22 @@ type notifyJob struct {
 	errMsg  string
 }
 
+// Stats is a point-in-time snapshot of live monitor-check and notify-queue metrics.
+type Stats struct {
+	// DueThisWave is how many monitors were selected for the current check wave.
+	DueThisWave int
+	// InFlight is how many HTTP checks are executing right now.
+	InFlight int
+	// WaitingForSlot is how many due monitors still wait for a concurrency slot in this wave.
+	WaitingForSlot int
+	// MaxConcurrency is the configured concurrent HTTP check limit.
+	MaxConcurrency int
+	// NotifyQueued is how many status-change alerts sit in the notify channel.
+	NotifyQueued int
+	// NotifyCapacity is the notify channel buffer size.
+	NotifyCapacity int
+}
+
 // MonitorWorker periodically checks URLs from the database.
 type MonitorWorker struct {
 	db               *gorm.DB
@@ -61,6 +77,13 @@ type MonitorWorker struct {
 	notifyDone chan struct{}
 	started    atomic.Bool
 	stopOnce   sync.Once
+
+	// waveDue is the size of the current check wave; zero when idle between waves.
+	waveDue atomic.Int64
+	// waveStarted counts monitors that have acquired a concurrency slot in this wave.
+	waveStarted atomic.Int64
+	// inFlight counts HTTP checks currently executing.
+	inFlight atomic.Int64
 
 	lastMaintenanceAt time.Time
 }
@@ -92,6 +115,30 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		stop:       make(chan struct{}),
 		loopDone:   make(chan struct{}),
 		notifyDone: make(chan struct{}),
+	}
+}
+
+// Stats returns live check-wave and notification-queue counters for ops pages.
+func (w *MonitorWorker) Stats() Stats {
+	if w == nil {
+		return Stats{}
+	}
+
+	due := int(w.waveDue.Load())
+	started := int(w.waveStarted.Load())
+	inFlight := int(w.inFlight.Load())
+	waiting := due - started
+	if waiting < 0 {
+		waiting = 0
+	}
+
+	return Stats{
+		DueThisWave:    due,
+		InFlight:       inFlight,
+		WaitingForSlot: waiting,
+		MaxConcurrency: w.checkConcurrency,
+		NotifyQueued:   len(w.notifyJobs),
+		NotifyCapacity: notifyQueueSize,
 	}
 }
 
@@ -236,27 +283,51 @@ func (w *MonitorWorker) runDueMonitors() {
 	due := make([]models.MonitorURL, 0)
 	for _, monitor := range monitors {
 		intervalSeconds := models.MonitorCheckIntervalSeconds(monitor, globalIntervalSeconds)
-		if !isMonitorDue(monitor.LastCheckedAt, time.Duration(intervalSeconds)*time.Second, now) {
+		if !IsMonitorDue(monitor.LastCheckedAt, time.Duration(intervalSeconds)*time.Second, now) {
 			continue
 		}
 		due = append(due, monitor)
 	}
 
-	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor)
+	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor, &checkWaveCounters{
+		due:      &w.waveDue,
+		started:  &w.waveStarted,
+		inFlight: &w.inFlight,
+	})
 
 	w.runMaintenanceIfDue(now)
+}
+
+// checkWaveCounters holds atomics updated while a check wave runs.
+// due is the wave size; started counts acquired slots; inFlight counts running checks.
+type checkWaveCounters struct {
+	due      *atomic.Int64
+	started  *atomic.Int64
+	inFlight *atomic.Int64
 }
 
 // runChecksConcurrently runs checkFn for each monitor with at most maxConcurrent goroutines.
 // monitors is the list of due monitors to check in this wave.
 // maxConcurrent caps how many HTTP checks may run at the same time; values below 1 become 1.
 // checkFn performs one monitor check and must be safe to call concurrently.
-func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, checkFn func(models.MonitorURL)) {
+// counters, when non-nil, receives live wave progress for Stats().
+func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, checkFn func(models.MonitorURL), counters *checkWaveCounters) {
 	if len(monitors) == 0 {
 		return
 	}
 	if maxConcurrent < 1 {
 		maxConcurrent = 1
+	}
+
+	if counters != nil {
+		counters.due.Store(int64(len(monitors)))
+		counters.started.Store(0)
+		counters.inFlight.Store(0)
+		defer func() {
+			counters.due.Store(0)
+			counters.started.Store(0)
+			counters.inFlight.Store(0)
+		}()
 	}
 
 	sem := make(chan struct{}, maxConcurrent)
@@ -265,9 +336,18 @@ func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, chec
 	for _, monitor := range monitors {
 		wg.Add(1)
 		sem <- struct{}{}
+		if counters != nil {
+			counters.started.Add(1)
+			counters.inFlight.Add(1)
+		}
 		go func(m models.MonitorURL) {
 			defer wg.Done()
-			defer func() { <-sem }()
+			defer func() {
+				<-sem
+				if counters != nil {
+					counters.inFlight.Add(-1)
+				}
+			}()
 			checkFn(m)
 		}(monitor)
 	}
@@ -275,11 +355,11 @@ func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, chec
 	wg.Wait()
 }
 
-// isMonitorDue reports whether a monitor should be checked at now based on its last check time.
+// IsMonitorDue reports whether a monitor should be checked at now based on its last check time.
 // lastCheckedAt is nil when the monitor has never been checked.
 // interval is the effective check interval for the monitor.
 // now is the current time used for the due calculation.
-func isMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Time) bool {
+func IsMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Time) bool {
 	if lastCheckedAt == nil {
 		return true
 	}

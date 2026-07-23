@@ -98,21 +98,21 @@ func TestIsMonitorDue(t *testing.T) {
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
 
 	t.Run("never checked", func(t *testing.T) {
-		if !isMonitorDue(nil, interval, now) {
+		if !IsMonitorDue(nil, interval, now) {
 			t.Fatal("expected first check to be due")
 		}
 	})
 
 	t.Run("interval not elapsed", func(t *testing.T) {
 		last := now.Add(-30 * time.Second)
-		if isMonitorDue(&last, interval, now) {
+		if IsMonitorDue(&last, interval, now) {
 			t.Fatal("expected monitor to be skipped")
 		}
 	})
 
 	t.Run("interval elapsed", func(t *testing.T) {
 		last := now.Add(-time.Minute)
-		if !isMonitorDue(&last, interval, now) {
+		if !IsMonitorDue(&last, interval, now) {
 			t.Fatal("expected monitor to be due")
 		}
 	})
@@ -156,7 +156,7 @@ func TestRunChecksConcurrentlyRespectsLimit(t *testing.T) {
 		mu.Lock()
 		seen[m.ID] = true
 		mu.Unlock()
-	})
+	}, nil)
 	elapsed := time.Since(start)
 
 	if got := int(checked.Load()); got != monitorCount {
@@ -179,14 +179,81 @@ func TestRunChecksConcurrentlyRespectsLimit(t *testing.T) {
 func TestRunChecksConcurrentlyEmptyAndInvalidLimit(t *testing.T) {
 	runChecksConcurrently(nil, 5, func(models.MonitorURL) {
 		t.Fatal("checkFn must not run for empty list")
-	})
+	}, nil)
 
 	var ran atomic.Int32
 	runChecksConcurrently([]models.MonitorURL{{ID: 1}}, 0, func(models.MonitorURL) {
 		ran.Add(1)
-	})
+	}, nil)
 	if ran.Load() != 1 {
 		t.Fatalf("expected single check with invalid limit, got %d", ran.Load())
+	}
+}
+
+func TestStatsTracksWaveProgress(t *testing.T) {
+	w := New(nil, &config.Config{CheckConcurrency: 2})
+
+	release := make(chan struct{})
+	started := make(chan struct{}, 4)
+	monitors := []models.MonitorURL{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runChecksConcurrently(monitors, w.checkConcurrency, func(models.MonitorURL) {
+			started <- struct{}{}
+			<-release
+		}, &checkWaveCounters{
+			due:      &w.waveDue,
+			started:  &w.waveStarted,
+			inFlight: &w.inFlight,
+		})
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for in-flight checks")
+		}
+	}
+
+	stats := w.Stats()
+	if stats.DueThisWave != 4 {
+		t.Fatalf("DueThisWave = %d, want 4", stats.DueThisWave)
+	}
+	if stats.InFlight != 2 {
+		t.Fatalf("InFlight = %d, want 2", stats.InFlight)
+	}
+	if stats.WaitingForSlot != 2 {
+		t.Fatalf("WaitingForSlot = %d, want 2", stats.WaitingForSlot)
+	}
+	if stats.MaxConcurrency != 2 {
+		t.Fatalf("MaxConcurrency = %d, want 2", stats.MaxConcurrency)
+	}
+	if stats.NotifyCapacity != notifyQueueSize {
+		t.Fatalf("NotifyCapacity = %d, want %d", stats.NotifyCapacity, notifyQueueSize)
+	}
+	if stats.NotifyQueued != 0 {
+		t.Fatalf("NotifyQueued = %d, want 0", stats.NotifyQueued)
+	}
+
+	close(release)
+	wg.Wait()
+
+	stats = w.Stats()
+	if stats.DueThisWave != 0 || stats.InFlight != 0 || stats.WaitingForSlot != 0 {
+		t.Fatalf("expected idle stats after wave, got %+v", stats)
+	}
+}
+
+func TestStatsReportsNotifyQueueDepth(t *testing.T) {
+	w := New(nil, &config.Config{})
+	w.enqueueNotification(models.MonitorURL{ID: 1, NotifySMTP: true}, false, "down")
+	stats := w.Stats()
+	if stats.NotifyQueued != 1 {
+		t.Fatalf("NotifyQueued = %d, want 1", stats.NotifyQueued)
 	}
 }
 

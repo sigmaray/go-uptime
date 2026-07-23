@@ -1,0 +1,94 @@
+{{ define "admin/info/index.html" }}
+<h2 class="mb-4">Info</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="h6 text-muted">Due / waiting</h3>
+                <p class="display-6 mb-0" data-testid="info-due-waiting">{{ .DueWaiting }}</p>
+                <p class="small text-muted mb-0">Monitors already due for a check</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="h6 text-muted">Total monitors</h3>
+                <p class="display-6 mb-0" data-testid="info-total-monitors">{{ .TotalMonitors }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="h6 text-muted">Check concurrency</h3>
+                <p class="display-6 mb-0" data-testid="info-check-concurrency">{{ .CheckConcurrency }}</p>
+                <p class="small text-muted mb-0">Max concurrent HTTP checks</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="h6 text-muted">Never checked</h3>
+                <p class="display-6 mb-0" data-testid="info-never-checked">{{ .NeverChecked }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h3 class="h5">Most overdue</h3>
+        {{ if .MostOverdue.HasOverdue }}
+        <dl class="row mb-0" data-testid="info-most-overdue">
+            <dt class="col-sm-3">Monitor</dt>
+            <dd class="col-sm-9">
+                <a href="/admin/monitors/{{ .MostOverdue.ID }}">{{ .MostOverdue.Name }}</a>
+                <span class="text-muted small d-block">{{ .MostOverdue.URL }}</span>
+            </dd>
+            <dt class="col-sm-3">Last checked</dt>
+            <dd class="col-sm-9">{{ .MostOverdue.LastChecked }}</dd>
+            <dt class="col-sm-3">Overdue by</dt>
+            <dd class="col-sm-9">{{ .MostOverdue.OverdueBy }}</dd>
+        </dl>
+        {{ else }}
+        <p class="text-muted mb-0" data-testid="info-most-overdue-empty">No overdue monitors with a prior check.</p>
+        {{ end }}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="h5">Live check wave</h3>
+        <p class="text-muted">Current worker wave progress and notification queue depth.</p>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" data-testid="info-worker-stats">
+                <tbody>
+                    <tr>
+                        <th scope="row">Due this wave</th>
+                        <td data-testid="info-wave-due">{{ .WorkerStats.DueThisWave }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">In flight</th>
+                        <td data-testid="info-wave-in-flight">{{ .WorkerStats.InFlight }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Waiting for slot</th>
+                        <td data-testid="info-wave-waiting">{{ .WorkerStats.WaitingForSlot }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Max concurrency</th>
+                        <td>{{ .WorkerStats.MaxConcurrency }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Notify queue</th>
+                        <td data-testid="info-notify-queue">{{ .WorkerStats.NotifyQueued }} / {{ .WorkerStats.NotifyCapacity }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{ end }}

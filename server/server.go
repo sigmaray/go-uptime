@@ -43,7 +43,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 
 	gormDB := database.Connect(cfg.Database)
 	tmpl := loadHTMLTemplates(r)
-	h := handlers.NewHandler(gormDB, tmpl, cfg)
+	monitorWorker := worker.New(gormDB, cfg)
+	h := handlers.NewHandler(gormDB, tmpl, cfg, monitorWorker)
 
 	r.Static("/static", "./static")
 
@@ -89,6 +90,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 
 		admin.GET("/incidents", h.IncidentsList)
 
+		admin.GET("/info", h.InfoPage)
+
 		admin.GET("/errors", h.ErrorsPage)
 		admin.GET("/logs", h.LogsPage)
 		admin.GET("/requests", h.RequestsPage)
@@ -123,7 +126,6 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		}
 	}
 
-	monitorWorker := worker.New(gormDB, cfg)
 	monitorWorker.Start()
 	defer monitorWorker.Stop()
 
