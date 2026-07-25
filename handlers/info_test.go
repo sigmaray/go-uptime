@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go-uptime/models"
+	"go-uptime/worker"
 )
 
 func TestFormatDuration(t *testing.T) {
@@ -84,5 +85,97 @@ func TestComputeMonitorBacklog(t *testing.T) {
 	}
 	if got.MostOverdue.OverdueBy != "29m 0s" {
 		t.Fatalf("OverdueBy = %q, want 29m 0s", got.MostOverdue.OverdueBy)
+	}
+}
+
+func TestPercentOf(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+		max   int
+		want  int
+	}{
+		{name: "half", value: 25, max: 50, want: 50},
+		{name: "zero max", value: 5, max: 0, want: 0},
+		{name: "zero value", value: 0, max: 10, want: 0},
+		{name: "over capacity", value: 12, max: 10, want: 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := percentOf(tt.value, tt.max); got != tt.want {
+				t.Fatalf("percentOf(%d, %d) = %d, want %d", tt.value, tt.max, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildUtilizationGauges(t *testing.T) {
+	gauges := buildUtilizationGauges(worker.Stats{
+		DueThisWave:    10,
+		InFlight:       4,
+		WaitingForSlot: 6,
+		MaxConcurrency: 8,
+		NotifyQueued:   2,
+		NotifyCapacity: 256,
+	})
+	if len(gauges) != 3 {
+		t.Fatalf("len = %d, want 3", len(gauges))
+	}
+	if gauges[0].Label != "Check slots" || gauges[0].Percent != 50 || gauges[0].Detail != "4 / 8" {
+		t.Fatalf("check slots gauge = %+v", gauges[0])
+	}
+	if gauges[1].Label != "Waiting for slot" || gauges[1].Percent != 60 || gauges[1].Detail != "6 / 10" {
+		t.Fatalf("waiting gauge = %+v", gauges[1])
+	}
+	if gauges[2].Label != "Notify queue" || gauges[2].Percent != 0 || gauges[2].Detail != "2 / 256" {
+		t.Fatalf("notify gauge = %+v", gauges[2])
+	}
+}
+
+func TestBuildFleetComposition(t *testing.T) {
+	now := time.Now()
+	up := true
+	down := false
+	monitors := []models.MonitorURL{
+		{LastCheckedAt: &now, IsUp: &up},
+		{LastCheckedAt: &now, IsUp: &up},
+		{LastCheckedAt: &now, IsUp: &down},
+		{},
+	}
+	got := buildFleetComposition(monitors)
+	if got.Total != 4 {
+		t.Fatalf("Total = %d, want 4", got.Total)
+	}
+	if got.Segments[0].Count != 2 || got.Segments[0].Modifier != "up" {
+		t.Fatalf("up segment = %+v", got.Segments[0])
+	}
+	if got.Segments[1].Count != 1 || got.Segments[1].Modifier != "down" {
+		t.Fatalf("down segment = %+v", got.Segments[1])
+	}
+	if got.Segments[2].Count != 1 || got.Segments[2].Modifier != "unknown" {
+		t.Fatalf("unknown segment = %+v", got.Segments[2])
+	}
+	if got.Segments[0].Percent != 50 {
+		t.Fatalf("up percent = %d, want 50", got.Segments[0].Percent)
+	}
+}
+
+func TestBuildBacklogComposition(t *testing.T) {
+	got := buildBacklogComposition(monitorBacklog{
+		Total:        5,
+		DueWaiting:   3,
+		NeverChecked: 1,
+	})
+	if got.Total != 5 {
+		t.Fatalf("Total = %d, want 5", got.Total)
+	}
+	if got.Segments[0].Label != "Due" || got.Segments[0].Count != 2 {
+		t.Fatalf("due segment = %+v", got.Segments[0])
+	}
+	if got.Segments[1].Label != "Never checked" || got.Segments[1].Count != 1 {
+		t.Fatalf("never segment = %+v", got.Segments[1])
+	}
+	if got.Segments[2].Label != "On schedule" || got.Segments[2].Count != 2 {
+		t.Fatalf("schedule segment = %+v", got.Segments[2])
 	}
 }

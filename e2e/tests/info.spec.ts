@@ -40,15 +40,19 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-most-overdue-empty')).toBeVisible();
     await expect(page.getByTestId('info-worker-stats')).toBeVisible();
     await expect(page.getByTestId('info-notify-queue')).toContainText('/');
+    await expect(page.getByTestId('info-utilization-gauges')).toBeVisible();
+    await expect(page.getByTestId('info-fleet-empty')).toBeVisible();
+    await expect(page.getByTestId('info-backlog-empty')).toBeVisible();
   });
 
   test('counts seeded monitors on the info page', async ({ page, request }) => {
     await apiCall(request, 'sql', {
       query: `
-        INSERT INTO monitor_urls (name, url, check_interval_seconds, created_at, updated_at)
+        INSERT INTO monitor_urls (name, url, check_interval_seconds, is_up, created_at, updated_at)
         VALUES
-          ('Never Checked', 'https://never.example', 3600, NOW(), NOW()),
-          ('Overdue Site', 'https://overdue.example', 3600, NOW(), NOW())
+          ('Never Checked', 'https://never.example', 3600, NULL, NOW(), NOW()),
+          ('Overdue Site', 'https://overdue.example', 3600, false, NOW(), NOW()),
+          ('Fresh Up', 'https://fresh.example', 3600, true, NOW(), NOW())
       `,
     });
     await apiCall(request, 'sql', {
@@ -58,16 +62,31 @@ test.describe('Admin info', () => {
         WHERE url = 'https://overdue.example'
       `,
     });
+    await apiCall(request, 'sql', {
+      query: `
+        UPDATE monitor_urls
+        SET last_checked_at = NOW()
+        WHERE url = 'https://fresh.example'
+      `,
+    });
 
     await page.goto('/admin/info');
-    await expect(page.getByTestId('info-total-monitors')).toHaveText('2');
+    await expect(page.getByTestId('info-total-monitors')).toHaveText('3');
     await expect(page.getByTestId('info-check-concurrency')).not.toHaveText('');
     await expect(page.getByTestId('info-worker-stats')).toBeVisible();
+    await expect(page.getByTestId('info-utilization-gauges')).toBeVisible();
+
+    await expect(page.getByTestId('info-fleet-up')).toHaveText('1');
+    await expect(page.getByTestId('info-fleet-down')).toHaveText('1');
+    await expect(page.getByTestId('info-fleet-unknown')).toHaveText('1');
+    await expect(page.getByTestId('info-backlog-due')).toHaveText('1');
+    await expect(page.getByTestId('info-backlog-never')).toHaveText('1');
+    await expect(page.getByTestId('info-backlog-schedule')).toHaveText('1');
 
     const dueText = await page.getByTestId('info-due-waiting').innerText();
     const neverText = await page.getByTestId('info-never-checked').innerText();
     expect(Number(dueText)).toBeGreaterThanOrEqual(0);
-    expect(Number(neverText)).toBeGreaterThanOrEqual(0);
+    expect(Number(neverText)).toBe(1);
 
     const overdue = page.getByTestId('info-most-overdue');
     const overdueEmpty = page.getByTestId('info-most-overdue-empty');
