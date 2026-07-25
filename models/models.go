@@ -23,7 +23,7 @@ type MonitorURL struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	Name                 string `gorm:"not null;default:''"`
-	URL                  string `gorm:"not null"`
+	URL                  string `gorm:"uniqueIndex;not null"`
 	IsUp                 *bool
 	LastCheckedAt        *time.Time
 	LastError            string `gorm:"not null;default:''"`

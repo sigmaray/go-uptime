@@ -14,6 +14,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// errMonitorURLExists is shown when create/update hits the unique URL constraint.
+const errMonitorURLExists = "A monitor with this URL already exists"
+
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
 type MonitorListItem struct {
 	models.MonitorURL
@@ -159,9 +162,20 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 		NotifySMTP:           input.NotifySMTP,
 	}
 	if err := h.DB.Create(&monitor).Error; err != nil {
-		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/new.html", gin.H{
-			"Error": "Failed to create monitor URL",
-			"Input": input,
+		status := http.StatusInternalServerError
+		errMsg := "Failed to create monitor URL"
+		if models.IsUniqueViolation(err) {
+			status = http.StatusConflict
+			errMsg = errMonitorURLExists
+		}
+		_, notifyData, _ := h.monitorNotificationContext()
+		h.renderPage(c, status, "admin/monitors/new.html", gin.H{
+			"Error":              errMsg,
+			"Input":              input,
+			"NotifyTelegram":     input.NotifyTelegram,
+			"NotifySMTP":         input.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Add Monitor URL", ActiveNav: "monitors"})
 		return
 	}
@@ -251,8 +265,14 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/bulk_new.html",
-			h.bulkMonitorFormData(input, "Failed to create monitor URLs"),
+		status := http.StatusInternalServerError
+		errMsg := "Failed to create monitor URLs"
+		if models.IsUniqueViolation(err) {
+			status = http.StatusConflict
+			errMsg = errMonitorURLExists
+		}
+		h.renderPage(c, status, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, errMsg),
 			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 		return
 	}
@@ -427,9 +447,20 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	monitor.NotifyTelegram = input.NotifyTelegram
 	monitor.NotifySMTP = input.NotifySMTP
 	if err := h.DB.Save(&monitor).Error; err != nil {
-		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/edit.html", gin.H{
-			"Error":   "Failed to update monitor URL",
-			"Monitor": monitor,
+		status := http.StatusInternalServerError
+		errMsg := "Failed to update monitor URL"
+		if models.IsUniqueViolation(err) {
+			status = http.StatusConflict
+			errMsg = errMonitorURLExists
+		}
+		_, notifyData, _ := h.monitorNotificationContext()
+		h.renderPage(c, status, "admin/monitors/edit.html", gin.H{
+			"Error":              errMsg,
+			"Monitor":            monitor,
+			"NotifyTelegram":     input.NotifyTelegram,
+			"NotifySMTP":         input.NotifySMTP,
+			"TelegramConfigured": notifyData["TelegramConfigured"],
+			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 		return
 	}
