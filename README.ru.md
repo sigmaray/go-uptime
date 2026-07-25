@@ -126,9 +126,10 @@ go run . db-execute-sql "SELECT 1"
 ## Makefile
 
 ```sh
-make fmt       # gofmt
+make fmt        # gofmt
 make vet
-make lint      # golangci-lint
+make lint-build # кастомный golangci-lint с NilAway (один раз)
+make lint       # ./custom-gcl run (соберёт бинарник, если его нет)
 make test
 make build
 make migrate

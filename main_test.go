@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -17,7 +18,9 @@ import (
 
 func runCLI(t *testing.T, envs []string, input string, args ...string) (string, string) {
 	t.Helper()
-	cmd := exec.Command("go", append([]string{"run", "."}, args...)...)
+	cmdArgs := append([]string{"run", "."}, args...)
+	// Test helper always invokes the local module with fixed "go run ." plus test args.
+	cmd := exec.CommandContext(context.Background(), "go", cmdArgs...) //nolint:gosec // G204: fixed go toolchain invocation in tests
 	cmd.Env = append(os.Environ(), envs...)
 
 	if input != "" {
@@ -68,6 +71,7 @@ func envOr(key, fallback string) string {
 
 func setupTestDB(t *testing.T) {
 	t.Helper()
+	ctx := context.Background()
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
 		envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
@@ -82,16 +86,17 @@ func setupTestDB(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	testDB := getTestDBName() + "_cli"
-	if _, err := db.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
 		t.Fatalf("drop test db: %v", err)
 	}
-	if _, err := db.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, testDB)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE "%s"`, testDB)); err != nil {
 		t.Fatalf("create test db: %v", err)
 	}
 }
 
 func cleanupTestDB(t *testing.T) {
 	t.Helper()
+	ctx := context.Background()
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
 		envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
@@ -107,12 +112,12 @@ func cleanupTestDB(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	testDB := getTestDBName() + "_cli"
-	_, _ = db.Exec(fmt.Sprintf(`
+	_, _ = db.ExecContext(ctx, fmt.Sprintf(`
 		SELECT pg_terminate_backend(pg_stat_activity.pid)
 		FROM pg_stat_activity
 		WHERE pg_stat_activity.datname = '%s' AND pid <> pg_backend_pid()
 	`, testDB))
-	if _, err := db.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
 		t.Errorf("drop test db: %v", err)
 	}
 }

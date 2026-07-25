@@ -126,9 +126,10 @@ Alias: `go run . s` → `server`.
 ## Makefile
 
 ```sh
-make fmt       # gofmt
+make fmt        # gofmt
 make vet
-make lint      # golangci-lint
+make lint-build # custom golangci-lint with NilAway (once)
+make lint       # ./custom-gcl run (builds binary if missing)
 make test
 make build
 make migrate

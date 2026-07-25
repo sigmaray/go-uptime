@@ -23,7 +23,7 @@ var (
 	rootCmd            = &cobra.Command{
 		Use:   "go-uptime",
 		Short: "Uptime monitoring application",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			_ = cmd.Help()
 		},
 	}
@@ -44,8 +44,11 @@ func ensureConfig() *config.Config {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load configuration")
 	}
+	if c == nil {
+		panic("config.Load returned nil config without error")
+	}
 	cfg = c
-	return cfg
+	return c
 }
 
 // Execute runs the CLI.
@@ -86,7 +89,7 @@ func serverCmd() *cobra.Command {
 		Use:     "server",
 		Aliases: []string{"s"},
 		Short:   "Start the HTTP server",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			server.Run(ensureConfig(), migrations)
 		},
 	}
@@ -96,7 +99,7 @@ func dbUsersCreateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-users-create",
 		Short: "Create a user interactively",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.UsersCreate(connectDB())
 		},
 	}
@@ -106,7 +109,7 @@ func dbUsersSeedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-users-seed",
 		Short: "Create admin user (admin/admin)",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.UsersSeed(connectDB())
 		},
 	}
@@ -116,7 +119,7 @@ func dbUsersDeleteAllCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-users-delete-all",
 		Short: "Delete all users",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.UsersDeleteAll(connectDB())
 		},
 	}
@@ -126,7 +129,7 @@ func dbUsersShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-users-show",
 		Short: "Show all users",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.UsersShow(connectDB())
 		},
 	}
@@ -136,7 +139,7 @@ func dbGooseMigrateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-goose-migrate",
 		Short: "Apply Goose database migrations",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			database.RunGooseMigrations(migrations, ensureConfig().Database)
 			fmt.Println("Migrations applied.")
 		},
@@ -147,7 +150,7 @@ func dbGormMigrateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-gorm-migrate",
 		Short: "Apply GORM AutoMigrate",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			database.RunGormAutoMigrate(ensureConfig().Database)
 			fmt.Println("GORM AutoMigrate completed.")
 		},
@@ -158,7 +161,7 @@ func dbClearAllTablesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-clear-all-tables",
 		Short: "Clear all database tables",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.ClearAllTables(connectDB())
 		},
 	}
@@ -169,7 +172,7 @@ func dbClearTableCmd() *cobra.Command {
 		Use:   "db-clear-table [table]",
 		Short: "Clear a database table",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			cli.ClearTable(connectDB(), args[0])
 		},
 	}
@@ -179,7 +182,7 @@ func dbDropAllTablesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "db-drop-all-tables",
 		Short: "Drop all database tables",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cli.DropAllTables(connectDB())
 		},
 	}
@@ -190,7 +193,7 @@ func dbDropTableCmd() *cobra.Command {
 		Use:   "db-drop-table [table]",
 		Short: "Drop a database table",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			cli.DropTable(connectDB(), args[0])
 		},
 	}
@@ -201,7 +204,7 @@ func dbExecuteSQLCmd() *cobra.Command {
 		Use:   "db-execute-sql [query...]",
 		Short: "Execute SQL and print results as a table",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			cli.ExecuteSQL(connectDB(), cli.ReadSQLFromArgs(args))
 		},
 	}

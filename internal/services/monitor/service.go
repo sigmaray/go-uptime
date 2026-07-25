@@ -1,3 +1,4 @@
+// Package monitor contains business logic for creating and managing monitor URLs.
 package monitor
 
 import (

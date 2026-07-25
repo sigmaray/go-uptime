@@ -181,7 +181,7 @@ func setupLogger(level string) {
 
 type applogHook struct{}
 
-func (applogHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+func (applogHook) Run(_ *zerolog.Event, level zerolog.Level, msg string) {
 	if level >= zerolog.WarnLevel {
 		applog.AddError(msg, level.String())
 	}

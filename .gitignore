@@ -2,6 +2,7 @@
 *.exe
 uptime
 go-uptime
+custom-gcl
 coverage.out
 e2e/node_modules/
 e2e/playwright-report/

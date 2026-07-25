@@ -10,6 +10,19 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-
-issues:
-  exclude-use-default: false
+    - revive
+    - gosec
+    - errorlint
+    - bodyclose
+    - noctx
+    - contextcheck
+    - nilerr
+    - zerologlint
+    - nilaway
+  settings:
+    custom:
+      nilaway:
+        type: module
+        description: Static analysis tool to detect potential nil panics in Go code.
+        settings:
+          include-pkgs: go-uptime

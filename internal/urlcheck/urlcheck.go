@@ -70,7 +70,7 @@ func NewClient(maxConcurrent int) *http.Client {
 	return &http.Client{
 		Timeout:   RequestTimeout,
 		Transport: newTransport(maxConcurrent),
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("too many redirects")
 			}

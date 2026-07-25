@@ -3,6 +3,7 @@
 package forms
 
 import (
+	"errors"
 	"net/url"
 	"reflect"
 	"strings"
@@ -62,8 +63,8 @@ func validateMonitorURL(fl validator.FieldLevel) bool {
 // FormatValidationError converts validator errors into a human-readable string.
 // err is the error returned by a Validate method or validate.Struct.
 func FormatValidationError(err error) string {
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var validationErrors validator.ValidationErrors
+	if !errors.As(err, &validationErrors) {
 		return err.Error()
 	}
 

@@ -238,14 +238,14 @@ func buildUtilizationGauges(stats worker.Stats) []utilizationGauge {
 // newUtilizationGauge builds one gauge with a safe percentage and detail label.
 // label is the short metric title shown in the UI.
 // value is the current absolute count.
-// max is the capacity or wave size used as the bar denominator.
-func newUtilizationGauge(label string, value, max int) utilizationGauge {
+// capacity is the capacity or wave size used as the bar denominator.
+func newUtilizationGauge(label string, value, capacity int) utilizationGauge {
 	return utilizationGauge{
 		Label:   label,
 		Value:   value,
-		Max:     max,
-		Percent: percentOf(value, max),
-		Detail:  fmt.Sprintf("%d / %d", value, max),
+		Max:     capacity,
+		Percent: percentOf(value, capacity),
+		Detail:  fmt.Sprintf("%d / %d", value, capacity),
 	}
 }
 
@@ -403,17 +403,18 @@ func marshalHeartbeatHourChartJSON(chart heartbeatHourChart) (template.JS, error
 	if err != nil {
 		return "", fmt.Errorf("marshal heartbeat hour chart: %w", err)
 	}
-	return template.JS(raw), nil
+	// JSON from encoding/json is safe to embed as a JS literal.
+	return template.JS(raw), nil //nolint:gosec // G203: trusted JSON, not user HTML
 }
 
-// percentOf returns value as an integer percent of max, clamped to 0–100.
+// percentOf returns value as an integer percent of capacity, clamped to 0–100.
 // value is the numerator (current usage or segment count).
-// max is the denominator (capacity or total); non-positive max yields 0.
-func percentOf(value, max int) int {
-	if max <= 0 || value <= 0 {
+// capacity is the denominator (capacity or total); non-positive capacity yields 0.
+func percentOf(value, capacity int) int {
+	if capacity <= 0 || value <= 0 {
 		return 0
 	}
-	percent := (value * 100) / max
+	percent := (value * 100) / capacity
 	if percent > 100 {
 		return 100
 	}

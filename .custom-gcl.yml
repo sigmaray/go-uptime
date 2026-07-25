@@ -1,0 +1,10 @@
+# Custom golangci-lint binary with NilAway (not in the default binary due to false positives).
+# Build with: golangci-lint custom
+# Run with: ./custom-gcl run ./...
+version: v2.7.2
+name: custom-gcl
+plugins:
+  - module: go.uber.org/nilaway
+    import: go.uber.org/nilaway/cmd/gclplugin
+    # Pin a pseudo-version for reproducible CI builds (nilaway has no semver tags yet).
+    version: v0.0.0-20260724203407-f4f8ac24c032

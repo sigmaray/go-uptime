@@ -1,3 +1,4 @@
+// Package main is the go-uptime application entrypoint.
 package main
 
 import (

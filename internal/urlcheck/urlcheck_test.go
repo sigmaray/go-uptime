@@ -54,7 +54,7 @@ func TestProbeUp(t *testing.T) {
 }
 
 func TestProbeDownStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
@@ -73,12 +73,12 @@ func TestProbeDownStatus(t *testing.T) {
 }
 
 func TestProbeAllAndUnavailableURLs(t *testing.T) {
-	upServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upServer.Close()
 
-	downServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	downServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer downServer.Close()
@@ -99,9 +99,9 @@ func TestProbeAllAndUnavailableURLs(t *testing.T) {
 }
 
 func TestSetBrowserLikeHeaders(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
+		t.Fatalf("NewRequestWithContext: %v", err)
 	}
 	SetBrowserLikeHeaders(req)
 	if got := req.Header.Get("User-Agent"); got != browserLikeUserAgent {

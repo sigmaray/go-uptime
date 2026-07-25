@@ -1,3 +1,4 @@
+// Package middlewares provides Gin middleware for auth, logging, and rate limits.
 package middlewares
 
 import (

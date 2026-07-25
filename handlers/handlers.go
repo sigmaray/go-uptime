@@ -1,3 +1,4 @@
+// Package handlers implements Gin HTTP handlers for the admin UI and APIs.
 package handlers
 
 import (

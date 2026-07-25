@@ -6,6 +6,7 @@ import (
 	"go-uptime/internal/applog"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -19,24 +20,33 @@ func ZerologLogger() gin.HandlerFunc {
 		c.Next()
 
 		latency := time.Since(start)
-		event := log.Info()
-		if len(c.Errors) > 0 {
-			event = log.Error().Err(c.Errors.Last())
-		} else if c.Writer.Status() >= 400 && c.Writer.Status() < 500 {
-			event = log.Warn()
-		} else if c.Writer.Status() >= 500 {
-			event = log.Error()
+		status := c.Writer.Status()
+		switch {
+		case len(c.Errors) > 0:
+			dispatchRequestLog(log.Error().Err(c.Errors.Last()), c, path, query, latency)
+		case status >= 500:
+			dispatchRequestLog(log.Error(), c, path, query, latency)
+		case status >= 400:
+			dispatchRequestLog(log.Warn(), c, path, query, latency)
+		default:
+			dispatchRequestLog(log.Info(), c, path, query, latency)
 		}
-
-		event.
-			Int("status", c.Writer.Status()).
-			Str("method", c.Request.Method).
-			Str("path", path).
-			Str("query", query).
-			Str("ip", c.ClientIP()).
-			Dur("latency", latency).
-			Msg(c.Request.Method + " " + path)
 	}
+}
+
+// dispatchRequestLog writes the shared HTTP request fields and finishes the zerolog event.
+// e is the level-specific event already started by the caller.
+// c is the Gin context for status, method, and client IP.
+// path and query are the request URL parts captured before handlers ran.
+// latency is how long the request took.
+func dispatchRequestLog(e *zerolog.Event, c *gin.Context, path, query string, latency time.Duration) {
+	e.Int("status", c.Writer.Status()).
+		Str("method", c.Request.Method).
+		Str("path", path).
+		Str("query", query).
+		Str("ip", c.ClientIP()).
+		Dur("latency", latency).
+		Msg(c.Request.Method + " " + path)
 }
 
 // ErrorCapture stores Gin errors in application memory.

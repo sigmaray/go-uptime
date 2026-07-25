@@ -49,13 +49,14 @@ func (h *Handler) renderPage(c *gin.Context, status int, contentTmpl string, dat
 	}
 
 	c.HTML(status, "admin/layout.html", gin.H{
-		"Title":       opts.Title,
-		"ActiveNav":   opts.ActiveNav,
-		"HideNav":     opts.HideNav,
-		"BodyClass":   opts.BodyClass,
-		"Error":       errMsg,
-		"Success":     successMsg,
-		"Content":     template.HTML(contentBuf.String()),
+		"Title":     opts.Title,
+		"ActiveNav": opts.ActiveNav,
+		"HideNav":   opts.HideNav,
+		"BodyClass": opts.BodyClass,
+		"Error":     errMsg,
+		"Success":   successMsg,
+		// Content is rendered from trusted server templates, not raw user input.
+		"Content":     template.HTML(contentBuf.String()), //nolint:gosec // G203: trusted template output
 		"CurrentUser": currentUser,
 		"IsDev":       h.Config.IsDevelopment(),
 	})

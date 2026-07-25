@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -58,9 +59,9 @@ func TestMonitorWorkerPauseSkipsDueMonitors(t *testing.T) {
 }
 
 func TestSetBrowserLikeHeaders(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
+		t.Fatalf("NewRequestWithContext: %v", err)
 	}
 
 	urlcheck.SetBrowserLikeHeaders(req)
@@ -115,8 +116,8 @@ func TestRunChecksConcurrentlyRespectsLimit(t *testing.T) {
 	)
 
 	monitors := make([]models.MonitorURL, monitorCount)
-	for i := range monitors {
-		monitors[i].ID = uint(i + 1)
+	for i := range uint(monitorCount) {
+		monitors[i].ID = i + 1
 	}
 
 	var (
@@ -269,8 +270,8 @@ func TestEnqueueNotificationSkipsDisabledChannels(t *testing.T) {
 
 func TestEnqueueNotificationDoesNotBlockWhenQueueFull(t *testing.T) {
 	w := New(nil, &config.Config{})
-	for i := 0; i < notifyQueueSize; i++ {
-		w.notifyJobs <- notifyJob{monitor: models.MonitorURL{ID: uint(i)}}
+	for i := range uint(notifyQueueSize) {
+		w.notifyJobs <- notifyJob{monitor: models.MonitorURL{ID: i + 1}}
 	}
 
 	start := time.Now()

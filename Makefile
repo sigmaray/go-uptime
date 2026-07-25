@@ -1,4 +1,6 @@
-.PHONY: fmt vet lint test build migrate server
+.PHONY: fmt vet lint lint-build test build migrate server
+
+CUSTOM_GCL := ./custom-gcl
 
 fmt:
 	gofmt -w .
@@ -6,8 +8,15 @@ fmt:
 vet:
 	go vet ./...
 
-lint:
-	golangci-lint run ./...
+# Build a local golangci-lint binary that includes the NilAway module plugin.
+lint-build:
+	golangci-lint custom
+
+lint: $(CUSTOM_GCL)
+	$(CUSTOM_GCL) run ./...
+
+$(CUSTOM_GCL): .custom-gcl.yml
+	golangci-lint custom
 
 test:
 	go test ./...
