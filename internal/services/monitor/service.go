@@ -16,7 +16,7 @@ import (
 // ErrMonitorURLExists is the conflict error string.
 const ErrMonitorURLExists = "A monitor with this URL already exists"
 
-const createVerifyConcurrency = 10
+const createVerifyConcurrency = 50
 
 // Service provides business logic for monitor URLs.
 type Service struct {
