@@ -49,7 +49,8 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-heartbeat-hour-total')).toHaveText('0 total');
     await expect(page.getByTestId('info-heartbeat-hour-success')).toHaveText('0 successful');
     await expect(page.getByTestId('info-heartbeat-hour-failed')).toHaveText('0 failed');
-    await expect(page.getByTestId('info-heartbeat-minute')).toHaveCount(60);
+    await expect(page.getByTestId('info-heartbeat-chart-canvas')).toBeVisible();
+    await expect(page.locator('[data-info-heartbeat-chart]')).toHaveAttribute('data-minute-count', '60');
 
     await expect(page.getByTestId('info-table-counts')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Database tables' })).toBeVisible();
@@ -146,6 +147,7 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-heartbeat-hour-total')).toHaveText('5 total');
     await expect(page.getByTestId('info-heartbeat-hour-success')).toHaveText('3 successful');
     await expect(page.getByTestId('info-heartbeat-hour-failed')).toHaveText('2 failed');
-    await expect(page.getByTestId('info-heartbeat-minute')).toHaveCount(60);
+    await expect(page.getByTestId('info-heartbeat-chart-canvas')).toBeVisible();
+    await expect(page.locator('[data-info-heartbeat-chart]')).toHaveAttribute('data-minute-count', '60');
   });
 });

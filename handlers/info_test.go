@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -221,6 +222,25 @@ func TestBuildHeartbeatHourChart(t *testing.T) {
 	empty := got.Bars[0]
 	if empty.Total != 0 || empty.HeightPercent != 0 {
 		t.Fatalf("empty bar = %+v", empty)
+	}
+}
+
+func TestMarshalHeartbeatHourChartJSON(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 30, 0, 0, time.UTC)
+	chart := buildHeartbeatHourChart([]models.HeartbeatMinuteCount{
+		{BucketAt: now, Success: 2, Failed: 1},
+	}, now)
+
+	got, err := marshalHeartbeatHourChartJSON(chart)
+	if err != nil {
+		t.Fatalf("marshalHeartbeatHourChartJSON: %v", err)
+	}
+	raw := string(got)
+	if !strings.Contains(raw, `"labels"`) || !strings.Contains(raw, `"success"`) || !strings.Contains(raw, `"failed"`) {
+		t.Fatalf("unexpected JSON: %s", raw)
+	}
+	if !strings.Contains(raw, `"15:30"`) {
+		t.Fatalf("missing current label in JSON: %s", raw)
 	}
 }
 

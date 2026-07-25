@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"time"
 
@@ -103,6 +105,16 @@ type heartbeatHourChart struct {
 	EndLabel string
 }
 
+// heartbeatHourChartPayload is the JSON shape consumed by Chart.js on the info page.
+type heartbeatHourChartPayload struct {
+	// Labels are minute clock labels (HH:MM), oldest first.
+	Labels []string `json:"labels"`
+	// Success is successful heartbeat counts aligned with Labels.
+	Success []int `json:"success"`
+	// Failed is failed heartbeat counts aligned with Labels.
+	Failed []int `json:"failed"`
+}
+
 // tableRowCount is one PostgreSQL application table with its current row count.
 type tableRowCount struct {
 	// Name is the PostgreSQL table name (for example "monitor_urls").
@@ -157,6 +169,14 @@ func (h *Handler) InfoPage(c *gin.Context) {
 		return
 	}
 	heartbeatChart := buildHeartbeatHourChart(minuteCounts, now)
+	chartJSON, err := marshalHeartbeatHourChartJSON(heartbeatChart)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to encode heartbeat chart for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load heartbeat chart.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
 
 	globalIntervalSeconds := models.GetCheckIntervalSeconds(h.DB)
 	backlog := computeMonitorBacklog(monitors, globalIntervalSeconds, now)
@@ -172,17 +192,18 @@ func (h *Handler) InfoPage(c *gin.Context) {
 	}
 
 	h.renderPage(c, http.StatusOK, "admin/info/index.html", gin.H{
-		"TotalMonitors":      backlog.Total,
-		"DueWaiting":         backlog.DueWaiting,
-		"NeverChecked":       backlog.NeverChecked,
-		"CheckConcurrency":   checkConcurrency,
-		"MostOverdue":        backlog.MostOverdue,
-		"WorkerStats":        workerStats,
-		"UtilizationGauges":  buildUtilizationGauges(workerStats),
-		"FleetComposition":   buildFleetComposition(monitors),
-		"BacklogComposition": buildBacklogComposition(backlog),
-		"HeartbeatHourChart": heartbeatChart,
-		"TableCounts":        tableCounts,
+		"TotalMonitors":          backlog.Total,
+		"DueWaiting":             backlog.DueWaiting,
+		"NeverChecked":           backlog.NeverChecked,
+		"CheckConcurrency":       checkConcurrency,
+		"MostOverdue":            backlog.MostOverdue,
+		"WorkerStats":            workerStats,
+		"UtilizationGauges":      buildUtilizationGauges(workerStats),
+		"FleetComposition":       buildFleetComposition(monitors),
+		"BacklogComposition":     buildBacklogComposition(backlog),
+		"HeartbeatHourChart":     heartbeatChart,
+		"HeartbeatHourChartJSON": chartJSON,
+		"TableCounts":            tableCounts,
 	}, PageOptions{Title: "Info", ActiveNav: "info"})
 }
 
@@ -363,6 +384,26 @@ func buildHeartbeatHourChart(counts []models.HeartbeatMinuteCount, now time.Time
 		StartLabel:   startLabel,
 		EndLabel:     endLabel,
 	}
+}
+
+// marshalHeartbeatHourChartJSON encodes chart series for the Chart.js renderer.
+// chart is the past-hour view model already filled with minute bars.
+func marshalHeartbeatHourChartJSON(chart heartbeatHourChart) (template.JS, error) {
+	payload := heartbeatHourChartPayload{
+		Labels:  make([]string, len(chart.Bars)),
+		Success: make([]int, len(chart.Bars)),
+		Failed:  make([]int, len(chart.Bars)),
+	}
+	for i, bar := range chart.Bars {
+		payload.Labels[i] = bar.Label
+		payload.Success[i] = bar.Success
+		payload.Failed[i] = bar.Failed
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal heartbeat hour chart: %w", err)
+	}
+	return template.JS(raw), nil
 }
 
 // percentOf returns value as an integer percent of max, clamped to 0–100.
