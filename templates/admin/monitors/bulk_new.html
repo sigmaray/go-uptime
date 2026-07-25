@@ -1,0 +1,21 @@
+{{ define "admin/monitors/bulk_new.html" }}
+<h2 class="mb-4">Add multiple Monitor URLs</h2>
+<form method="POST" action="/admin/monitors/bulk" class="col-md-8">
+    <div class="mb-3">
+        <label class="form-label" for="urls">URLs <span class="text-danger" aria-hidden="true">*</span><span class="visually-hidden">required</span></label>
+        <textarea class="form-control" id="urls" name="urls" rows="8" required aria-required="true" aria-describedby="urlsHelp nameHelp"
+                  placeholder="https://example.com&#10;https://another.example.com, https://third.example.com">{{ .Input.URLs }}</textarea>
+        <div id="urlsHelp" class="form-text">Enter one or more HTTP/HTTPS addresses, separated by commas or new lines.</div>
+        <div id="nameHelp" class="form-text">Each monitor's Name is set to its URL.</div>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="check_interval_seconds">Check interval (seconds) <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="number" class="form-control" id="check_interval_seconds" name="check_interval_seconds"
+               value="{{ .Input.CheckIntervalSeconds }}" min="10" max="86400" aria-describedby="checkIntervalHelp">
+        <div id="checkIntervalHelp" class="form-text">Leave empty to use the global check interval from Settings. Applies to every URL in this list.</div>
+    </div>
+    {{ template "admin/monitors/notification_fields.html" . }}
+    <button type="submit" class="btn btn-primary">Create</button>
+    <a href="/admin/monitors" class="btn btn-link">Cancel</a>
+</form>
+{{ end }}

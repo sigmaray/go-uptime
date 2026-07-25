@@ -41,3 +41,64 @@ func (input MonitorURLInput) Validate() error {
 	_, err := input.ParseCheckIntervalSeconds()
 	return err
 }
+
+// MonitorURLBulkInput holds form data for creating multiple monitored URLs at once.
+// Name is not collected: each monitor's Name is set to its URL.
+type MonitorURLBulkInput struct {
+	URLs                 string `form:"urls"`
+	CheckIntervalSeconds string `form:"check_interval_seconds" label:"check interval"`
+	NotifyTelegram       bool   `form:"-"`
+	NotifySMTP           bool   `form:"-"`
+}
+
+// ParseURLList splits raw into individual URLs by commas and newlines, trims whitespace,
+// drops empty entries, and removes duplicates while preserving first-seen order.
+// raw is the textarea content submitted by the user.
+func ParseURLList(raw string) []string {
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.ReplaceAll(normalized, ",", "\n")
+
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, part := range strings.Split(normalized, "\n") {
+		url := strings.TrimSpace(part)
+		if url == "" {
+			continue
+		}
+		if _, exists := seen[url]; exists {
+			continue
+		}
+		seen[url] = struct{}{}
+		out = append(out, url)
+	}
+	return out
+}
+
+// ParsedURLs returns the deduplicated URL list from the textarea field.
+func (input MonitorURLBulkInput) ParsedURLs() []string {
+	return ParseURLList(input.URLs)
+}
+
+// ParseCheckIntervalSeconds converts the optional form field into a monitor-specific interval.
+// An empty value means each monitor should inherit the global setting.
+func (input MonitorURLBulkInput) ParseCheckIntervalSeconds() (*int, error) {
+	return MonitorURLInput{CheckIntervalSeconds: input.CheckIntervalSeconds}.ParseCheckIntervalSeconds()
+}
+
+// Validate checks that at least one URL is present, each URL is a valid monitor URL,
+// and the optional check-interval field is valid when provided.
+func (input MonitorURLBulkInput) Validate() error {
+	urls := input.ParsedURLs()
+	if len(urls) == 0 {
+		return fmt.Errorf("at least one URL is required")
+	}
+	for _, rawURL := range urls {
+		single := MonitorURLInput{URL: rawURL}
+		if err := validate.Struct(single); err != nil {
+			return fmt.Errorf("%s: %s", rawURL, FormatValidationError(err))
+		}
+	}
+	_, err := input.ParseCheckIntervalSeconds()
+	return err
+}

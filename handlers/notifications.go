@@ -21,21 +21,47 @@ func (h *Handler) monitorNotificationContext() (models.NotificationSettings, gin
 }
 
 // bindMonitorNotificationFlags reads notify_* flags from the form, respecting system settings.
+// c is the Gin request context with the POST form.
+// input receives NotifyTelegram and NotifySMTP when the corresponding channel is configured.
 func (h *Handler) bindMonitorNotificationFlags(c *gin.Context, input *forms.MonitorURLInput) error {
-	settings, err := models.LoadNotificationSettings(h.DB)
+	telegram, smtp, err := h.readMonitorNotificationFlags(c)
 	if err != nil {
 		return err
 	}
+	input.NotifyTelegram = telegram
+	input.NotifySMTP = smtp
+	return nil
+}
 
-	input.NotifyTelegram = false
-	input.NotifySMTP = false
+// bindBulkMonitorNotificationFlags reads notify_* flags for bulk monitor creation.
+// c is the Gin request context with the POST form.
+// input receives NotifyTelegram and NotifySMTP when the corresponding channel is configured.
+func (h *Handler) bindBulkMonitorNotificationFlags(c *gin.Context, input *forms.MonitorURLBulkInput) error {
+	telegram, smtp, err := h.readMonitorNotificationFlags(c)
+	if err != nil {
+		return err
+	}
+	input.NotifyTelegram = telegram
+	input.NotifySMTP = smtp
+	return nil
+}
+
+// readMonitorNotificationFlags reads notify_* POST fields when channels are configured in Settings.
+// c is the Gin request context with the POST form.
+// It returns telegram and smtp preference flags (false when the channel is not configured).
+func (h *Handler) readMonitorNotificationFlags(c *gin.Context) (notifyTelegram, notifySMTP bool, err error) {
+	settings, err := models.LoadNotificationSettings(h.DB)
+	if err != nil {
+		return false, false, err
+	}
+
 	if settings.TelegramConfigured() {
-		input.NotifyTelegram = c.PostForm("notify_telegram") == "on"
+		notifyTelegram = c.PostForm("notify_telegram") == "on"
 	}
 	if settings.SMTPConfigured() {
-		input.NotifySMTP = c.PostForm("notify_smtp") == "on"
+		notifySMTP = c.PostForm("notify_smtp") == "on"
 	}
-	return nil
+	return notifyTelegram, notifySMTP, nil
 }
 
 // settingsPageData collects data for the settings page.

@@ -82,6 +82,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		admin.GET("/monitors", h.MonitorsList)
 		admin.GET("/monitors/new", h.NewMonitorPage)
 		admin.POST("/monitors", h.CreateMonitor)
+		admin.GET("/monitors/bulk/new", h.BulkNewMonitorPage)
+		admin.POST("/monitors/bulk", h.BulkCreateMonitors)
 		admin.GET("/monitors/:id", h.MonitorShowPage)
 		admin.GET("/monitors/:id/edit", h.EditMonitorPage)
 		admin.POST("/monitors/:id", h.UpdateMonitor)

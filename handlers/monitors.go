@@ -11,6 +11,7 @@ import (
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
@@ -160,6 +161,97 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Created monitor %q (%s)", monitor.Name, monitor.URL))
+	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
+}
+
+// BulkNewMonitorPage displays the form for creating multiple monitored URLs at once.
+// c is the Gin request context for the authenticated admin session.
+func (h *Handler) BulkNewMonitorPage(c *gin.Context) {
+	_, notifyData, err := h.monitorNotificationContext()
+	if err != nil {
+		applog.AddError("failed to load notification settings", err.Error())
+		notifyData = gin.H{
+			"TelegramConfigured": false,
+			"SMTPConfigured":     false,
+		}
+	}
+
+	data := gin.H{
+		"Input": forms.MonitorURLBulkInput{},
+	}
+	for key, value := range notifyData {
+		data[key] = value
+	}
+
+	h.renderPage(c, http.StatusOK, "admin/monitors/bulk_new.html", data, PageOptions{
+		Title:     "Add multiple Monitor URLs",
+		ActiveNav: "monitors",
+	})
+}
+
+// bulkMonitorFormData builds template data for the bulk create form, including notification context.
+// input is the submitted (or empty) bulk form.
+// errMsg is a user-visible error string; empty when none.
+func (h *Handler) bulkMonitorFormData(input forms.MonitorURLBulkInput, errMsg string) gin.H {
+	_, notifyData, _ := h.monitorNotificationContext()
+	return gin.H{
+		"Error":              errMsg,
+		"Input":              input,
+		"NotifyTelegram":     input.NotifyTelegram,
+		"NotifySMTP":         input.NotifySMTP,
+		"TelegramConfigured": notifyData["TelegramConfigured"],
+		"SMTPConfigured":     notifyData["SMTPConfigured"],
+	}
+}
+
+// BulkCreateMonitors creates multiple monitors from a comma- or newline-separated URL list.
+// Notification flags and optional check interval apply to every created monitor.
+// Each monitor's Name is set to its URL.
+// c is the Gin request context with the POST form body.
+func (h *Handler) BulkCreateMonitors(c *gin.Context) {
+	var input forms.MonitorURLBulkInput
+	if err := c.ShouldBind(&input); err != nil {
+		h.renderPage(c, http.StatusBadRequest, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, "Invalid form data"),
+			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+		return
+	}
+	if err := h.bindBulkMonitorNotificationFlags(c, &input); err != nil {
+		applog.AddError("failed to load notification settings", err.Error())
+	}
+	if err := input.Validate(); err != nil {
+		h.renderPage(c, http.StatusBadRequest, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, forms.FormatValidationError(err)),
+			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+		return
+	}
+
+	checkInterval, _ := input.ParseCheckIntervalSeconds()
+	urls := input.ParsedURLs()
+
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		for _, rawURL := range urls {
+			monitor := models.MonitorURL{
+				Name:                 rawURL,
+				URL:                  rawURL,
+				CheckIntervalSeconds: checkInterval,
+				NotifyTelegram:       input.NotifyTelegram,
+				NotifySMTP:           input.NotifySMTP,
+			}
+			if err := tx.Create(&monitor).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, "Failed to create monitor URLs"),
+			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+		return
+	}
+
+	applog.AddEvent("monitor", fmt.Sprintf("Created %d monitors in bulk", len(urls)))
 	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
