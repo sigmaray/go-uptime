@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// defaultCheckConcurrency is used when config omits or sets an invalid concurrency value.
-const defaultCheckConcurrency = 50
+// DefaultCheckConcurrency is used when config omits or sets an invalid concurrency value.
+const DefaultCheckConcurrency = 150
 
 // notifyQueueSize is the buffered capacity for async status-change alerts.
 const notifyQueueSize = 256
@@ -69,7 +69,7 @@ type MonitorWorker struct {
 // db is the GORM handle used to load monitors and persist check results.
 // cfg supplies retention settings and the maximum number of concurrent HTTP checks.
 func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
-	concurrency := defaultCheckConcurrency
+	concurrency := DefaultCheckConcurrency
 	if cfg != nil && cfg.CheckConcurrency > 0 {
 		concurrency = cfg.CheckConcurrency
 	}

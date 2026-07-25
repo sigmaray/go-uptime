@@ -254,8 +254,8 @@ func TestNewUsesConfiguredCheckConcurrency(t *testing.T) {
 	}
 
 	w = New(nil, &config.Config{CheckConcurrency: 0})
-	if w.checkConcurrency != defaultCheckConcurrency {
-		t.Fatalf("checkConcurrency = %d, want default %d", w.checkConcurrency, defaultCheckConcurrency)
+	if w.checkConcurrency != DefaultCheckConcurrency {
+		t.Fatalf("checkConcurrency = %d, want default %d", w.checkConcurrency, DefaultCheckConcurrency)
 	}
 }
 

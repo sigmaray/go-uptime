@@ -181,7 +181,7 @@ func (h *Handler) InfoPage(c *gin.Context) {
 	globalIntervalSeconds := models.GetCheckIntervalSeconds(h.DB)
 	backlog := computeMonitorBacklog(monitors, globalIntervalSeconds, now)
 
-	checkConcurrency := 50
+	checkConcurrency := worker.DefaultCheckConcurrency
 	if h.Config != nil && h.Config.CheckConcurrency > 0 {
 		checkConcurrency = h.Config.CheckConcurrency
 	}

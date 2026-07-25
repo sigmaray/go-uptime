@@ -64,7 +64,7 @@ Settings are loaded from the environment (and from `.env` via `godotenv`). See [
 | `GO_UPTIME_SESSION_SECURE` | Secure cookie flag | `false` |
 | `GO_UPTIME_INCIDENT_RETENTION_DAYS` | How long resolved incidents are kept | `90` |
 | `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Cap of resolved incidents per monitor | `100` |
-| `GO_UPTIME_CHECK_CONCURRENCY` | Max concurrent HTTP checks | `50` |
+| `GO_UPTIME_CHECK_CONCURRENCY` | Max concurrent HTTP checks | `150` |
 | `GO_UPTIME_DATABASE_*` | Host, port, user, password, database name | see `.env.example` |
 | `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Test REST API for e2e | `false` |
 | `GO_UPTIME_TEST_DATABASE_NAME` | Database name for tests | `go-uptime-test` |

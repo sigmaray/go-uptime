@@ -64,7 +64,7 @@ make server
 | `GO_UPTIME_SESSION_SECURE` | Secure-флаг cookie | `false` |
 | `GO_UPTIME_INCIDENT_RETENTION_DAYS` | Срок хранения закрытых инцидентов | `90` |
 | `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Лимит закрытых инцидентов на монитор | `100` |
-| `GO_UPTIME_CHECK_CONCURRENCY` | Максимум параллельных HTTP-проверок | `50` |
+| `GO_UPTIME_CHECK_CONCURRENCY` | Максимум параллельных HTTP-проверок | `150` |
 | `GO_UPTIME_DATABASE_*` | Хост, порт, пользователь, пароль, имя БД | см. `.env.example` |
 | `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Тестовый REST API для e2e | `false` |
 | `GO_UPTIME_TEST_DATABASE_NAME` | Имя БД для тестов | `go-uptime-test` |
