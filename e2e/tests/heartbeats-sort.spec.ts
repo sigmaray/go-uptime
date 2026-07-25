@@ -20,15 +20,17 @@ async function login(page: Page, request: APIRequestContext) {
 }
 
 async function heartbeatMonitorNames(page: Page): Promise<string[]> {
-  return page.locator('.heartbeats-table tbody tr td:first-child a').allTextContents();
+  return page.locator('.heartbeats-table tbody tr td:nth-child(2)').evaluateAll((cells) =>
+    cells.map((cell) => (cell.childNodes[0]?.textContent ?? '').trim()),
+  );
 }
 
 async function heartbeatStatuses(page: Page): Promise<string[]> {
-  return page.locator('.heartbeats-table tbody tr td:nth-child(4) .badge').allTextContents();
+  return page.locator('.heartbeats-table tbody tr td:nth-child(5) .badge').allTextContents();
 }
 
 async function heartbeatResponseTimes(page: Page): Promise<string[]> {
-  return page.locator('.heartbeats-table tbody tr td:nth-child(3)').allTextContents();
+  return page.locator('.heartbeats-table tbody tr td:nth-child(4)').allTextContents();
 }
 
 test.describe('Heartbeats list sorting', () => {

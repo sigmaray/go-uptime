@@ -35,7 +35,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		"monitor_urls.created_at desc, monitor_urls.id asc",
 		c.Query("sort"),
 		c.Query("order"),
-		"Name", "URL", "IsUp", "LastCheckedAt", "LastError",
+		"ID", "URL", "IsUp", "LastCheckedAt", "LastError",
 	)
 	sort.ExtraQuery = filter.QueryValues()
 	now := time.Now()

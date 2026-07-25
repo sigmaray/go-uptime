@@ -81,16 +81,16 @@ func TestMonitorsListFilterStatusURL(t *testing.T) {
 		Status: "up",
 		Q:      "example.com",
 	}
-	sort := ListSort{Path: "/admin/monitors", Column: "Name", Order: "asc"}
+	sort := ListSort{Path: "/admin/monitors", Column: "ID", Order: "asc"}
 
 	got := filter.StatusURL("down", sort)
-	want := "/admin/monitors?order=asc&q=example.com&sort=Name&status=down"
+	want := "/admin/monitors?order=asc&q=example.com&sort=ID&status=down"
 	if got != want {
 		t.Fatalf("StatusURL(down) = %q, want %q", got, want)
 	}
 
 	gotAll := filter.StatusURL("", sort)
-	wantAll := "/admin/monitors?order=asc&q=example.com&sort=Name"
+	wantAll := "/admin/monitors?order=asc&q=example.com&sort=ID"
 	if gotAll != wantAll {
 		t.Fatalf("StatusURL(all) = %q, want %q", gotAll, wantAll)
 	}

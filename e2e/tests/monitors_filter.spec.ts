@@ -26,8 +26,8 @@ async function clearMonitors(request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'monitor_urls' });
 }
 
-async function monitorNames(page: Page): Promise<string[]> {
-  return page.locator('.monitors-table tbody tr td:first-child a').allTextContents();
+async function monitorURLs(page: Page): Promise<string[]> {
+  return page.locator('.monitors-table tbody tr td:nth-child(2) a').allTextContents();
 }
 
 async function monitorStatuses(page: Page): Promise<string[]> {
@@ -47,7 +47,11 @@ test.describe('Monitors list filter and search', () => {
 
     await page.goto('/admin/monitors');
     await expect(page.getByText('3 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['Unknown Host', 'Down Host', 'Up Host']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://unknown.example.com',
+      'https://down.example.com',
+      'https://up.example.com',
+    ]);
 
     const filter = page.getByRole('search', { name: 'Filter monitors' });
     await expect(filter.getByRole('link', { name: 'All' })).toHaveClass(/active/);
@@ -55,20 +59,24 @@ test.describe('Monitors list filter and search', () => {
     await filter.getByRole('link', { name: 'Down' }).click();
     await expect(page).toHaveURL(/status=down/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['Down Host']);
+    await expect(await monitorURLs(page)).toEqual(['https://down.example.com']);
     await expect(await monitorStatuses(page)).toEqual(['Down']);
     await expect(filter.getByRole('link', { name: 'Down' })).toHaveClass(/active/);
 
     await filter.getByRole('link', { name: 'Up' }).click();
     await expect(page).toHaveURL(/status=up/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['Up Host']);
+    await expect(await monitorURLs(page)).toEqual(['https://up.example.com']);
     await expect(await monitorStatuses(page)).toEqual(['Up']);
 
     await filter.getByRole('link', { name: 'All' }).click();
     await expect(page).not.toHaveURL(/status=/);
     await expect(page.getByText('3 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['Unknown Host', 'Down Host', 'Up Host']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://unknown.example.com',
+      'https://down.example.com',
+      'https://up.example.com',
+    ]);
   });
 
   test('searches monitors by URL fragment', async ({ page, request }) => {
@@ -87,14 +95,17 @@ test.describe('Monitors list filter and search', () => {
 
     await expect(page).toHaveURL(/q=example\.com/);
     await expect(page.getByText('2 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['WWW', 'API']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://www.example.com/',
+      'https://api.example.com/health',
+    ]);
     await expect(page.locator('#monitors-url-search')).toHaveValue('example.com');
 
     await page.locator('#monitors-url-search').fill('OTHER.TEST');
     await page.getByRole('button', { name: 'Search' }).click();
     await expect(page).toHaveURL(/q=OTHER\.TEST/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['Other']);
+    await expect(await monitorURLs(page)).toEqual(['https://other.test/status']);
   });
 
   test('combines status filter with URL search', async ({ page, request }) => {
@@ -111,13 +122,16 @@ test.describe('Monitors list filter and search', () => {
     await page.goto('/admin/monitors');
     await page.locator('#monitors-url-search').fill('api.example');
     await page.getByRole('button', { name: 'Search' }).click();
-    await expect(await monitorNames(page)).toEqual(['API Down', 'API Up']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://api.example.com/down',
+      'https://api.example.com/up',
+    ]);
 
     await page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' }).click();
     await expect(page).toHaveURL(/status=down/);
     await expect(page).toHaveURL(/q=api\.example/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
-    await expect(await monitorNames(page)).toEqual(['API Down']);
+    await expect(await monitorURLs(page)).toEqual(['https://api.example.com/down']);
     await expect(page.locator('#monitors-url-search')).toHaveValue('api.example');
   });
 
@@ -182,14 +196,17 @@ test.describe('Monitors list filter and search', () => {
 
     await page.goto('/admin/monitors');
     await page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' }).click();
-    await page.getByRole('link', { name: 'Sort by Name ascending' }).click();
+    await page.getByRole('link', { name: 'Sort by URL ascending' }).click();
 
     await expect(page).toHaveURL(/status=down/);
-    await expect(page).toHaveURL(/sort=Name/);
+    await expect(page).toHaveURL(/sort=URL/);
     await expect(page).toHaveURL(/order=asc/);
-    await expect(await monitorNames(page)).toEqual(['Alpha', 'Bravo']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://alpha.example.com',
+      'https://bravo.example.com',
+    ]);
 
-    await expect(page.getByRole('link', { name: 'Sort by Name descending' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'Sort by URL descending' })).toHaveAttribute(
       'href',
       /status=down/,
     );

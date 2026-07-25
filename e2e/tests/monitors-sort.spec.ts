@@ -19,8 +19,12 @@ async function login(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
-async function monitorNames(page: Page): Promise<string[]> {
+async function monitorIDs(page: Page): Promise<string[]> {
   return page.locator('.monitors-table tbody tr td:first-child a').allTextContents();
+}
+
+async function monitorURLs(page: Page): Promise<string[]> {
+  return page.locator('.monitors-table tbody tr td:nth-child(2) a').allTextContents();
 }
 
 test.describe('Monitors list sorting', () => {
@@ -34,8 +38,8 @@ test.describe('Monitors list sorting', () => {
 
     await page.goto('/admin/monitors');
 
-    await expect(page.getByRole('link', { name: 'Sort by Name ascending' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Sort by Name descending' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sort by ID ascending' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sort by ID descending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by URL ascending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by URL descending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by Status ascending' })).toBeVisible();
@@ -45,13 +49,14 @@ test.describe('Monitors list sorting', () => {
     await expect(page.getByRole('link', { name: 'Sort by Error ascending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by Error descending' })).toBeVisible();
 
+    await expect(page.getByRole('link', { name: /Sort by Name/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Uptime/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Last 30 min/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Edit/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Delete/i })).toHaveCount(0);
   });
 
-  test('sorts monitors by name in both directions', async ({ page, request }) => {
+  test('sorts monitors by id in both directions', async ({ page, request }) => {
     await login(page, request);
     await apiCall(request, 'clear-table', { table: 'monitor_urls' });
     await apiCall(request, 'sql', {
@@ -60,18 +65,25 @@ test.describe('Monitors list sorting', () => {
               ('https://alpha.example.com', 'Alpha', NOW() - INTERVAL '2 minutes', NOW()),
               ('https://bravo.example.com', 'Bravo', NOW() - INTERVAL '1 minute', NOW())`,
     });
+    const idsResult = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls ORDER BY id ASC`,
+    });
+    const idsAsc = (idsResult.rows as string[][])
+      .map((row) => row[0])
+      .sort((a, b) => Number(a) - Number(b));
+    const idsDesc = [...idsAsc].reverse();
 
     await page.goto('/admin/monitors');
-    await page.getByRole('link', { name: 'Sort by Name ascending' }).click();
-    await expect(page).toHaveURL(/sort=Name/);
+    await page.getByRole('link', { name: 'Sort by ID ascending' }).click();
+    await expect(page).toHaveURL(/sort=ID/);
     await expect(page).toHaveURL(/order=asc/);
-    await expect(await monitorNames(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
-    await expect(page.getByRole('link', { name: 'Sort by Name ascending' })).toHaveClass(/table-sort__link--active/);
+    await expect(await monitorIDs(page)).toEqual(idsAsc);
+    await expect(page.getByRole('link', { name: 'Sort by ID ascending' })).toHaveClass(/table-sort__link--active/);
 
-    await page.getByRole('link', { name: 'Sort by Name descending' }).click();
+    await page.getByRole('link', { name: 'Sort by ID descending' }).click();
     await expect(page).toHaveURL(/order=desc/);
-    await expect(await monitorNames(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
-    await expect(page.getByRole('link', { name: 'Sort by Name descending' })).toHaveClass(/table-sort__link--active/);
+    await expect(await monitorIDs(page)).toEqual(idsDesc);
+    await expect(page.getByRole('link', { name: 'Sort by ID descending' })).toHaveClass(/table-sort__link--active/);
   });
 
   test('sorts monitors by url, status, last check and error', async ({ page, request }) => {
@@ -88,16 +100,32 @@ test.describe('Monitors list sorting', () => {
     await page.goto('/admin/monitors');
 
     await page.getByRole('link', { name: 'Sort by URL ascending' }).click();
-    await expect(await monitorNames(page)).toEqual(['Alpha', 'Mike', 'Zulu']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://alpha.example.com',
+      'https://mike.example.com',
+      'https://zulu.example.com',
+    ]);
 
     await page.getByRole('link', { name: 'Sort by Status ascending' }).click();
-    await expect(await monitorNames(page)).toEqual(['Zulu', 'Alpha', 'Mike']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://zulu.example.com',
+      'https://alpha.example.com',
+      'https://mike.example.com',
+    ]);
 
     await page.getByRole('link', { name: 'Sort by Last Check ascending' }).click();
-    await expect(await monitorNames(page)).toEqual(['Zulu', 'Mike', 'Alpha']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://zulu.example.com',
+      'https://mike.example.com',
+      'https://alpha.example.com',
+    ]);
 
     await page.getByRole('link', { name: 'Sort by Error ascending' }).click();
-    await expect(await monitorNames(page)).toEqual(['Alpha', 'Mike', 'Zulu']);
+    await expect(await monitorURLs(page)).toEqual([
+      'https://alpha.example.com',
+      'https://mike.example.com',
+      'https://zulu.example.com',
+    ]);
   });
 
   test('keeps sort when paginating monitors', async ({ page, request }) => {
@@ -111,20 +139,24 @@ test.describe('Monitors list sorting', () => {
                      NOW()
               FROM generate_series(1, 101) AS n`,
     });
+    const idsResult = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls ORDER BY id ASC`,
+    });
+    const idsAsc = (idsResult.rows as string[][])
+      .map((row) => row[0])
+      .sort((a, b) => Number(a) - Number(b));
 
     await page.goto('/admin/monitors');
-    await page.getByRole('link', { name: 'Sort by Name ascending' }).click();
-    await expect(page).toHaveURL(/sort=Name/);
+    await page.getByRole('link', { name: 'Sort by ID ascending' }).click();
+    await expect(page).toHaveURL(/sort=ID/);
     await expect(page).toHaveURL(/order=asc/);
     await expect(page.locator('.monitors-table tbody tr')).toHaveCount(100);
-    await expect(await monitorNames(page)).toEqual(
-      Array.from({ length: 100 }, (_, i) => `SortPag ${String(i + 1).padStart(3, '0')}`),
-    );
+    await expect(await monitorIDs(page)).toEqual(idsAsc.slice(0, 100));
 
     const pagination = page.getByLabel('Monitors pagination');
     await expect(pagination.getByRole('link', { name: '2', exact: true })).toHaveAttribute(
       'href',
-      /sort=Name/,
+      /sort=ID/,
     );
     await expect(pagination.getByRole('link', { name: '2', exact: true })).toHaveAttribute(
       'href',
@@ -133,16 +165,32 @@ test.describe('Monitors list sorting', () => {
 
     await pagination.getByRole('link', { name: '2', exact: true }).click();
     await expect(page).toHaveURL(/page=2/);
-    await expect(page).toHaveURL(/sort=Name/);
+    await expect(page).toHaveURL(/sort=ID/);
     await expect(page).toHaveURL(/order=asc/);
     await expect(page.locator('.monitors-table tbody tr')).toHaveCount(1);
-    await expect(await monitorNames(page)).toEqual(['SortPag 101']);
+    await expect(await monitorIDs(page)).toEqual([idsAsc[100]]);
 
-    await page.getByRole('link', { name: 'Sort by Name descending' }).click();
+    await page.getByRole('link', { name: 'Sort by ID descending' }).click();
     await expect(page).toHaveURL(/order=desc/);
     await expect(page).not.toHaveURL(/page=/);
-    await expect(await monitorNames(page)).toEqual(
-      Array.from({ length: 100 }, (_, i) => `SortPag ${String(101 - i).padStart(3, '0')}`),
-    );
+    await expect(await monitorIDs(page)).toEqual([...idsAsc].reverse().slice(0, 100));
+  });
+
+  test('id links to monitor detail page', async ({ page, request }) => {
+    await login(page, request);
+    await apiCall(request, 'clear-table', { table: 'monitor_urls' });
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_urls (url, name, created_at, updated_at)
+              VALUES ('https://id-link.example.com', 'ID Link', NOW(), NOW())`,
+    });
+    const idsResult = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://id-link.example.com'`,
+    });
+    const id = (idsResult.rows as string[][])[0][0];
+
+    await page.goto('/admin/monitors');
+    await page.getByRole('link', { name: id, exact: true }).click();
+    await expect(page).toHaveURL(`/admin/monitors/${id}`);
+    await expect(page.getByRole('heading', { name: 'ID Link' })).toBeVisible();
   });
 });

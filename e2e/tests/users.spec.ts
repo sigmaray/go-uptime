@@ -92,7 +92,7 @@ test.describe('Monitors', () => {
     });
 
     page.on('dialog', (dialog) => dialog.accept());
-    await page.getByRole('row', { name: new RegExp(monitorName) }).getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('row', { name: new RegExp(monitorUrl) }).getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/admin/monitors');
     await expect(page.getByText('Deleted successfully.')).toBeVisible();
@@ -137,7 +137,11 @@ test.describe('Monitors', () => {
     });
 
     await page.goto('/admin/monitors');
-    await page.getByRole('link', { name: monitorName }).click();
+    const incidentsMonitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+    const incidentsMonitorID = (incidentsMonitor.rows as string[][])[0][0];
+    await page.getByRole('link', { name: incidentsMonitorID, exact: true }).click();
 
     await expect(page).toHaveURL(/\/admin\/monitors\/\d+$/);
 
@@ -178,7 +182,11 @@ test.describe('Monitors', () => {
     });
 
     await page.goto('/admin/monitors');
-    await page.getByRole('link', { name: monitorName }).click();
+    const paginationMonitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = '${monitorUrl}'`,
+    });
+    const paginationMonitorID = (paginationMonitor.rows as string[][])[0][0];
+    await page.getByRole('link', { name: paginationMonitorID, exact: true }).click();
 
     const incidentsTable = page.locator('.incidents-table');
     const heartbeatsTable = page.locator('.heartbeats-table');
@@ -203,13 +211,20 @@ test.describe('Monitors', () => {
     await expect(heartbeatsTable.locator('tbody tr')).toHaveCount(5);
   });
 
-  test('uses URL hostname when name is omitted', async ({ page }) => {
+  test('uses URL hostname when name is omitted', async ({ page, request }) => {
     await page.goto('/admin/monitors/new');
     await page.locator('#url').fill('https://example.org');
     await page.getByRole('button', { name: 'Create' }).click();
 
     await expect(page).toHaveURL('/admin/monitors');
-    await expect(page.getByRole('cell', { name: 'example.org', exact: true })).toBeVisible();
+    await expect(page.getByText('https://example.org')).toBeVisible();
+
+    const monitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://example.org'`,
+    });
+    const monitorID = (monitor.rows as string[][])[0][0];
+    await page.getByRole('link', { name: monitorID, exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'example.org' })).toBeVisible();
   });
 
   test('shows uptime history bars', async ({ page, request }) => {
@@ -295,7 +310,11 @@ test.describe('Monitors', () => {
     });
 
     await page.goto('/admin/monitors');
-    await page.getByRole('link', { name: 'Detail Test' }).click();
+    const detailMonitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://detail.example.com'`,
+    });
+    const detailMonitorID = (detailMonitor.rows as string[][])[0][0];
+    await page.getByRole('link', { name: detailMonitorID, exact: true }).click();
 
     await expect(page).toHaveURL(/\/admin\/monitors\/\d+$/);
     await expect(page.getByRole('heading', { name: 'Detail Test' })).toBeVisible();
@@ -325,11 +344,58 @@ test.describe('Heartbeats', () => {
               SELECT id, NOW(), true, 42 FROM monitor_urls WHERE url = 'https://hb-one.example.com'`,
     });
 
+    const monitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://hb-one.example.com'`,
+    });
+    const monitorID = (monitor.rows as string[][])[0][0];
+
     await page.goto('/admin/heartbeats');
     await expect(page.getByRole('heading', { name: 'Heartbeats' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'HB One' })).toBeVisible();
+    await expect(page.getByRole('link', { name: monitorID, exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: monitorID, exact: true })).toHaveAttribute(
+      'href',
+      `/admin/monitors/${monitorID}`,
+    );
+    await expect(page.getByText('HB One')).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Up', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: '42 ms' })).toBeVisible();
+  });
+});
+
+test.describe('Incidents', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await login(page, request);
+    await apiCall(request, 'clear-table', { table: 'incidents' });
+    await apiCall(request, 'clear-table', { table: 'monitor_checks' });
+    await apiCall(request, 'clear-table', { table: 'monitor_urls' });
+  });
+
+  test('shows monitor id as a link to the monitor', async ({ page, request }) => {
+    await page.goto('/admin/monitors/new');
+    await page.locator('#name').fill('Incident Monitor');
+    await page.locator('#url').fill('https://incident-link.example.com');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO incidents (monitor_url_id, started_at, error_message)
+              SELECT id, NOW(), 'timeout' FROM monitor_urls WHERE url = 'https://incident-link.example.com'`,
+    });
+
+    const monitor = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://incident-link.example.com'`,
+    });
+    const monitorID = (monitor.rows as string[][])[0][0];
+
+    await page.goto('/admin/incidents');
+    await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible();
+    const monitorLink = page.locator('.incidents-table tbody tr').first().getByRole('link', {
+      name: monitorID,
+      exact: true,
+    });
+    await expect(monitorLink).toHaveAttribute('href', `/admin/monitors/${monitorID}`);
+    await monitorLink.click();
+    await expect(page).toHaveURL(`/admin/monitors/${monitorID}`);
+    await expect(page.getByRole('heading', { name: 'Incident Monitor' })).toBeVisible();
   });
 });
 

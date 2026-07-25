@@ -43,9 +43,9 @@
             <tr>
                 <th>
                     <span class="table-sort">
-                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "Name" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "Name" }}" aria-label="Sort by Name ascending">↑</a>
-                        <span class="table-sort__label">Name</span>
-                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "Name" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "Name" }}" aria-label="Sort by Name descending">↓</a>
+                        <a class="table-sort__link{{ if .Sort.IsActiveAsc "ID" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "ID" }}" aria-label="Sort by ID ascending">↑</a>
+                        <span class="table-sort__label">ID</span>
+                        <a class="table-sort__link{{ if .Sort.IsActiveDesc "ID" }} table-sort__link--active{{ end }}" href="{{ .Sort.DescURL "ID" }}" aria-label="Sort by ID descending">↓</a>
                     </span>
                 </th>
                 <th>
@@ -85,7 +85,7 @@
             {{ range .Monitors }}
             <tr>
                 <td>
-                    <a href="/admin/monitors/{{ .ID }}">{{ if .Name }}{{ .Name }}{{ else }}—{{ end }}</a>
+                    <a href="/admin/monitors/{{ .ID }}">{{ .ID }}</a>
                 </td>
                 <td><a href="{{ .URL }}" target="_blank" rel="noopener">{{ .URL }}</a></td>
                 <td>

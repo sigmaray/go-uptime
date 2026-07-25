@@ -5,6 +5,7 @@
     <table class="table table-striped incidents-table">
         <thead>
             <tr>
+                <th>Monitor ID</th>
                 <th>URL</th>
                 <th>Started</th>
                 <th>Resolved</th>
@@ -15,6 +16,9 @@
         <tbody>
             {{ range .Incidents }}
             <tr>
+                <td>
+                    <a href="/admin/monitors/{{ .MonitorURLID }}">{{ .MonitorURLID }}</a>
+                </td>
                 <td>
                     {{ if .MonitorURL.Name }}{{ .MonitorURL.Name }} — {{ end }}
                     <a href="{{ .MonitorURL.URL }}" target="_blank" rel="noopener">{{ .MonitorURL.URL }}</a>
@@ -37,7 +41,7 @@
                 <td class="small text-danger">{{ .ErrorMessage }}</td>
             </tr>
             {{ else }}
-            <tr><td colspan="5" class="text-muted">No incidents recorded.</td></tr>
+            <tr><td colspan="6" class="text-muted">No incidents recorded.</td></tr>
             {{ end }}
         </tbody>
     </table>

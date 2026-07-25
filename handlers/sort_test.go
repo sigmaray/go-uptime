@@ -6,7 +6,7 @@ import (
 	"go-uptime/models"
 )
 
-var monitorSortFields = []string{"Name", "URL", "IsUp", "LastCheckedAt", "LastError"}
+var monitorSortFields = []string{"ID", "URL", "IsUp", "LastCheckedAt", "LastError"}
 
 var heartbeatSortFields = []string{"MonitorURL", "CheckedAt", "ResponseTimeMs", "IsUp"}
 
@@ -34,7 +34,7 @@ func TestParseListSort(t *testing.T) {
 			model:        models.MonitorURL{},
 			path:         "/admin/monitors",
 			defaultOrder: "monitor_urls.created_at desc, monitor_urls.id asc",
-			rawSort:      "Name",
+			rawSort:      "ID",
 			fields:       monitorSortFields,
 		},
 		{
@@ -47,14 +47,14 @@ func TestParseListSort(t *testing.T) {
 			fields:       monitorSortFields,
 		},
 		{
-			name:         "monitors Name asc",
+			name:         "monitors ID asc",
 			model:        models.MonitorURL{},
 			path:         "/admin/monitors",
 			defaultOrder: "monitor_urls.created_at desc, monitor_urls.id asc",
-			rawSort:      "Name",
+			rawSort:      "ID",
 			rawOrder:     "asc",
 			fields:       monitorSortFields,
-			wantColumn:   "Name",
+			wantColumn:   "ID",
 			wantOrder:    "asc",
 		},
 		{
@@ -106,22 +106,22 @@ func TestParseListSort(t *testing.T) {
 }
 
 func TestListSortURLs(t *testing.T) {
-	sort := ParseListSort("/admin/monitors", models.MonitorURL{}, "monitor_urls.created_at desc, monitor_urls.id asc", "Name", "asc", monitorSortFields...)
+	sort := ParseListSort("/admin/monitors", models.MonitorURL{}, "monitor_urls.created_at desc, monitor_urls.id asc", "ID", "asc", monitorSortFields...)
 
 	if got := sort.AscURL("URL"); got != "/admin/monitors?order=asc&sort=URL" {
 		t.Fatalf("AscURL(URL) = %q", got)
 	}
-	if got := sort.DescURL("Name"); got != "/admin/monitors?order=desc&sort=Name" {
-		t.Fatalf("DescURL(Name) = %q", got)
+	if got := sort.DescURL("ID"); got != "/admin/monitors?order=desc&sort=ID" {
+		t.Fatalf("DescURL(ID) = %q", got)
 	}
-	if got := sort.PageURL(2); got != "/admin/monitors?order=asc&page=2&sort=Name" {
+	if got := sort.PageURL(2); got != "/admin/monitors?order=asc&page=2&sort=ID" {
 		t.Fatalf("PageURL(2) = %q", got)
 	}
-	if !sort.IsActiveAsc("Name") {
-		t.Fatal("expected Name asc to be active")
+	if !sort.IsActiveAsc("ID") {
+		t.Fatal("expected ID asc to be active")
 	}
-	if sort.IsActiveDesc("Name") {
-		t.Fatal("did not expect Name desc to be active")
+	if sort.IsActiveDesc("ID") {
+		t.Fatal("did not expect ID desc to be active")
 	}
 
 	heartbeatSort := ParseListSort("/admin/heartbeats", models.MonitorCheck{}, "monitor_checks.checked_at desc, monitor_checks.id asc", "ResponseTimeMs", "desc", heartbeatSortFields...)
@@ -145,14 +145,17 @@ func TestSortableColumnsByFields(t *testing.T) {
 	if stable != "monitor_urls.id asc" {
 		t.Fatalf("stable = %q", stable)
 	}
-	if columns["Name"].expr != "monitor_urls.name" {
-		t.Fatalf("Name expr = %q", columns["Name"].expr)
+	if columns["ID"].expr != "monitor_urls.id" {
+		t.Fatalf("ID expr = %q", columns["ID"].expr)
 	}
 	if columns["IsUp"].expr != "monitor_urls.is_up" {
 		t.Fatalf("IsUp expr = %q", columns["IsUp"].expr)
 	}
 	if _, ok := columns["CreatedAt"]; ok {
 		t.Fatal("CreatedAt should not be sortable")
+	}
+	if _, ok := columns["Name"]; ok {
+		t.Fatal("Name should not be sortable")
 	}
 
 	hbColumns, hbStable := sortableColumnsByFields(models.MonitorCheck{}, heartbeatSortFields)
@@ -172,8 +175,8 @@ func TestSortableColumnsByFields(t *testing.T) {
 }
 
 func TestBuildAdminListURLWithQuery(t *testing.T) {
-	got := buildAdminListURLWithQuery("/admin/monitors", 2, ListSort{Column: "Name", Order: "asc"}.QueryValues())
-	want := "/admin/monitors?order=asc&page=2&sort=Name"
+	got := buildAdminListURLWithQuery("/admin/monitors", 2, ListSort{Column: "ID", Order: "asc"}.QueryValues())
+	want := "/admin/monitors?order=asc&page=2&sort=ID"
 	if got != want {
 		t.Fatalf("buildAdminListURLWithQuery() = %q, want %q", got, want)
 	}

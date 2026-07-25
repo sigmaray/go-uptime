@@ -5,6 +5,7 @@
     <table class="table table-sm table-striped heartbeats-table">
         <thead>
             <tr>
+                <th>Monitor ID</th>
                 <th>
                     <span class="table-sort">
                         <a class="table-sort__link{{ if .Sort.IsActiveAsc "MonitorURL" }} table-sort__link--active{{ end }}" href="{{ .Sort.AscURL "MonitorURL" }}" aria-label="Sort by Monitor ascending">↑</a>
@@ -39,7 +40,10 @@
             {{ range .Heartbeats }}
             <tr>
                 <td>
-                    <a href="/admin/monitors/{{ .MonitorURLID }}">{{ monitorDisplayName .MonitorURL }}</a>
+                    <a href="/admin/monitors/{{ .MonitorURLID }}">{{ .MonitorURLID }}</a>
+                </td>
+                <td>
+                    {{ monitorDisplayName .MonitorURL }}
                     <span class="text-muted small d-block">{{ .MonitorURL.URL }}</span>
                 </td>
                 <td class="text-nowrap">{{ .CheckedAt.Format "2006-01-02 15:04:05" }}</td>
@@ -53,7 +57,7 @@
                 </td>
             </tr>
             {{ else }}
-            <tr><td colspan="4" class="text-muted">No heartbeats recorded yet.</td></tr>
+            <tr><td colspan="5" class="text-muted">No heartbeats recorded yet.</td></tr>
             {{ end }}
         </tbody>
     </table>
