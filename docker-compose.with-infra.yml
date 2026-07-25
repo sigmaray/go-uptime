@@ -35,3 +35,6 @@ services:
       GO_UPTIME_ENABLE_PLAYWRIGHT_API: ${GO_UPTIME_ENABLE_PLAYWRIGHT_API:-false}
     ports:
       - "18081:8080"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
