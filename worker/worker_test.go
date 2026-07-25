@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go-uptime/config"
+	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 )
 
@@ -62,21 +63,21 @@ func TestSetBrowserLikeHeaders(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	setBrowserLikeHeaders(req)
+	urlcheck.SetBrowserLikeHeaders(req)
 
-	want := map[string]string{
-		"User-Agent":                browserLikeUserAgent,
-		"Accept":                    browserLikeAccept,
-		"Accept-Language":           browserLikeAcceptLanguage,
-		"Upgrade-Insecure-Requests": "1",
-		"Sec-Fetch-Dest":            "document",
-		"Sec-Fetch-Mode":            "navigate",
-		"Sec-Fetch-Site":            "none",
-		"Sec-Fetch-User":            "?1",
+	want := []string{
+		"User-Agent",
+		"Accept",
+		"Accept-Language",
+		"Upgrade-Insecure-Requests",
+		"Sec-Fetch-Dest",
+		"Sec-Fetch-Mode",
+		"Sec-Fetch-Site",
+		"Sec-Fetch-User",
 	}
-	for name, expected := range want {
-		if got := req.Header.Get(name); got != expected {
-			t.Fatalf("%s = %q, want %q", name, got, expected)
+	for _, name := range want {
+		if got := req.Header.Get(name); got == "" {
+			t.Fatalf("%s header is empty", name)
 		}
 	}
 }

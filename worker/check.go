@@ -2,29 +2,16 @@ package worker
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"go-uptime/internal/applog"
+	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 
 	"github.com/rs/zerolog/log"
 )
-
-// browserLikeUserAgent mimics a common desktop Chrome browser so WAF / bot filters
-// are less likely to reject checks solely because of an obvious monitor User-Agent.
-const browserLikeUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-// browserLikeAccept is a typical browser Accept header for a top-level document navigation.
-const browserLikeAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-
-// browserLikeAcceptLanguage prefers English and Russian so localized sites still treat the
-// request as a normal browser visit from an international client.
-const browserLikeAcceptLanguage = "en-US,en;q=0.9,ru;q=0.8"
 
 // runDueMonitors checks monitors whose individual interval has elapsed and runs periodic maintenance.
 func (w *MonitorWorker) runDueMonitors() {
@@ -129,61 +116,25 @@ func IsMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Tim
 }
 
 func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), urlcheck.RequestTimeout)
 	defer cancel()
 
 	displayName := models.MonitorDisplayName(monitor)
-	start := time.Now()
+	result := urlcheck.Probe(ctx, w.client, monitor.URL)
+	elapsed := int(result.DurationMs)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, monitor.URL, nil)
-	if err != nil {
-		elapsed := time.Since(start).Milliseconds()
-		w.recordMonitorRequest(displayName, monitor.URL, 0, elapsed, false, err.Error())
-		w.markDown(monitor, err.Error(), intPtr(int(elapsed)))
-		return
-	}
-	setBrowserLikeHeaders(req)
-
-	resp, err := w.client.Do(req)
-	elapsed := time.Since(start).Milliseconds()
-	now := time.Now()
-	if err != nil {
-		w.recordMonitorRequest(displayName, monitor.URL, 0, elapsed, false, err.Error())
-		w.markDown(monitor, err.Error(), intPtr(int(elapsed)))
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		errMsg := fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
-		w.recordMonitorRequest(displayName, monitor.URL, resp.StatusCode, elapsed, false, errMsg)
-		w.markDown(monitor, errMsg, intPtr(int(elapsed)))
+	if !result.Up {
+		w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, false, result.ErrMsg)
+		w.markDown(monitor, result.ErrMsg, intPtr(elapsed))
 		return
 	}
 
-	w.recordMonitorRequest(displayName, monitor.URL, resp.StatusCode, elapsed, true, "")
-	w.markUp(monitor, now, intPtr(int(elapsed)))
+	w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, true, "")
+	w.markUp(monitor, time.Now(), intPtr(elapsed))
 }
 
 func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
 	applog.AddMonitorRequest(monitorName, url, statusCode, responseTimeMs, isUp, errMsg)
-}
-
-// setBrowserLikeHeaders attaches request headers that resemble a normal browser GET.
-// req is the outbound monitor check request that will be sent by the HTTP client.
-// This reduces false downs from simple bot filters that reject custom monitor User-Agents.
-// Meta properties (for example WhatsApp) return HTTP 400 for a Chrome User-Agent without
-// Sec-Fetch-* navigation headers, so those are included as well.
-func setBrowserLikeHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", browserLikeUserAgent)
-	req.Header.Set("Accept", browserLikeAccept)
-	req.Header.Set("Accept-Language", browserLikeAcceptLanguage)
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
-	req.Header.Set("Sec-Fetch-Dest", "document")
-	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-Site", "none")
-	req.Header.Set("Sec-Fetch-User", "?1")
 }
 
 func intPtr(v int) *int {

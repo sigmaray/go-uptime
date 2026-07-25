@@ -11,8 +11,10 @@ type MonitorURLInput struct {
 	Name                 string `form:"name" validate:"omitempty,max=200" label:"name"`
 	URL                  string `form:"url" validate:"required,url,monitor_url" label:"url"`
 	CheckIntervalSeconds string `form:"check_interval_seconds" label:"check interval"`
-	NotifyTelegram       bool   `form:"-"`
-	NotifySMTP           bool   `form:"-"`
+	// VerifyBeforeCreate probes the URL before insert when true; unavailable sites are rejected.
+	VerifyBeforeCreate bool `form:"verify_before_create"`
+	NotifyTelegram     bool `form:"-"`
+	NotifySMTP         bool `form:"-"`
 }
 
 // ParseCheckIntervalSeconds converts the optional form field into a monitor-specific interval.
@@ -47,8 +49,10 @@ func (input MonitorURLInput) Validate() error {
 type MonitorURLBulkInput struct {
 	URLs                 string `form:"urls"`
 	CheckIntervalSeconds string `form:"check_interval_seconds" label:"check interval"`
-	NotifyTelegram       bool   `form:"-"`
-	NotifySMTP           bool   `form:"-"`
+	// VerifyBeforeCreate probes every URL before insert when true; unavailable sites reject the whole batch.
+	VerifyBeforeCreate bool `form:"verify_before_create"`
+	NotifyTelegram     bool `form:"-"`
+	NotifySMTP         bool `form:"-"`
 }
 
 // ParseURLList splits raw into individual URLs by commas and newlines, trims whitespace,

@@ -2,20 +2,17 @@
 package worker
 
 import (
-	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"go-uptime/config"
+	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 
 	"gorm.io/gorm"
 )
-
-const requestTimeout = 15 * time.Second
 
 // defaultCheckConcurrency is used when config omits or sets an invalid concurrency value.
 const defaultCheckConcurrency = 50
@@ -81,20 +78,11 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		db:               db,
 		cfg:              cfg,
 		checkConcurrency: concurrency,
-		client: &http.Client{
-			Timeout:   requestTimeout,
-			Transport: newCheckTransport(concurrency),
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return fmt.Errorf("too many redirects")
-				}
-				return nil
-			},
-		},
-		notifyJobs: make(chan notifyJob, notifyQueueSize),
-		stop:       make(chan struct{}),
-		loopDone:   make(chan struct{}),
-		notifyDone: make(chan struct{}),
+		client:           urlcheck.NewClient(concurrency),
+		notifyJobs:       make(chan notifyJob, notifyQueueSize),
+		stop:             make(chan struct{}),
+		loopDone:         make(chan struct{}),
+		notifyDone:       make(chan struct{}),
 	}
 }
 
@@ -156,29 +144,6 @@ func (w *MonitorWorker) Stats() Stats {
 		MaxConcurrency: w.checkConcurrency,
 		NotifyQueued:   len(w.notifyJobs),
 		NotifyCapacity: notifyQueueSize,
-	}
-}
-
-// newCheckTransport builds an HTTP transport sized for concurrent monitor checks.
-// maxConcurrent is the configured check concurrency used to size connection pools.
-func newCheckTransport(maxConcurrent int) *http.Transport {
-	idleConns := maxConcurrent * 2
-	if idleConns < 100 {
-		idleConns = 100
-	}
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          idleConns,
-		MaxIdleConnsPerHost:   10,
-		MaxConnsPerHost:       0,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
 	}
 }
 

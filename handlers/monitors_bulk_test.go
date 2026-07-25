@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"testing"
+
+	"go-uptime/internal/urlcheck"
 )
 
 func TestMonitorURLExistsMessage(t *testing.T) {
@@ -37,6 +39,44 @@ func TestMonitorURLExistsMessage(t *testing.T) {
 			got := monitorURLExistsMessage(tt.urls...)
 			if got != tt.want {
 				t.Fatalf("monitorURLExistsMessage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMonitorUnavailableMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		failures []urlcheck.Result
+		want     string
+	}{
+		{
+			name:     "empty",
+			failures: nil,
+			want:     "Site is unavailable and was not created",
+		},
+		{
+			name: "one failure",
+			failures: []urlcheck.Result{
+				{URL: "https://down.example.com", ErrMsg: "connection refused"},
+			},
+			want: "Site is unavailable and was not created: https://down.example.com (connection refused)",
+		},
+		{
+			name: "multiple failures",
+			failures: []urlcheck.Result{
+				{URL: "https://a.example.com", ErrMsg: "unexpected status code: 503"},
+				{URL: "https://b.example.com", ErrMsg: "timeout"},
+			},
+			want: "Sites are unavailable and were not created: https://a.example.com (unexpected status code: 503); https://b.example.com (timeout)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := monitorUnavailableMessage(tt.failures)
+			if got != tt.want {
+				t.Fatalf("monitorUnavailableMessage() = %q, want %q", got, tt.want)
 			}
 		})
 	}

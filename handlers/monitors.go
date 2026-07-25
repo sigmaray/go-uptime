@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"go-uptime/internal/applog"
 	"go-uptime/internal/forms"
+	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +19,9 @@ import (
 
 // errMonitorURLExists is shown when create/update hits the unique URL constraint.
 const errMonitorURLExists = "A monitor with this URL already exists"
+
+// createVerifyConcurrency caps concurrent reachability probes during create/bulk create.
+const createVerifyConcurrency = 10
 
 // monitorURLExistsMessage builds a user-facing conflict message for one or more URLs.
 // urls are the conflicting monitor URLs to include in the message; empty yields the generic text.
@@ -32,6 +37,40 @@ func monitorURLExistsMessage(urls ...string) string {
 		return errMonitorURLExists
 	}
 	return fmt.Sprintf("%s: %s", errMonitorURLExists, strings.Join(cleaned, ", "))
+}
+
+// monitorUnavailableMessage builds a user-facing error when verify-before-create finds unreachable sites.
+// failures are probe results that were not up; empty yields a generic message.
+func monitorUnavailableMessage(failures []urlcheck.Result) string {
+	if len(failures) == 0 {
+		return "Site is unavailable and was not created"
+	}
+	parts := make([]string, 0, len(failures))
+	for _, f := range failures {
+		detail := strings.TrimSpace(f.ErrMsg)
+		if detail == "" {
+			parts = append(parts, f.URL)
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", f.URL, detail))
+	}
+	if len(failures) == 1 {
+		return fmt.Sprintf("Site is unavailable and was not created: %s", parts[0])
+	}
+	return fmt.Sprintf("Sites are unavailable and were not created: %s", strings.Join(parts, "; "))
+}
+
+// verifyMonitorURLsReachable probes urls with the same up/down rules as the background worker.
+// ctx cancels outstanding probes.
+// urls are absolute HTTP/HTTPS addresses already validated by the form layer.
+// Returns unavailable probe results (empty when every URL is up).
+func verifyMonitorURLsReachable(ctx context.Context, urls []string) []urlcheck.Result {
+	if len(urls) == 0 {
+		return nil
+	}
+	client := urlcheck.NewClient(createVerifyConcurrency)
+	results := urlcheck.ProbeAll(ctx, client, urls, createVerifyConcurrency)
+	return urlcheck.UnavailableURLs(results)
 }
 
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
@@ -126,7 +165,9 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 		}
 	}
 
-	data := gin.H{}
+	data := gin.H{
+		"Input": forms.MonitorURLInput{},
+	}
 	for key, value := range notifyData {
 		data[key] = value
 	}
@@ -166,6 +207,22 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 			"SMTPConfigured":     notifyData["SMTPConfigured"],
 		}, PageOptions{Title: "Add Monitor URL", ActiveNav: "monitors"})
 		return
+	}
+
+	if input.VerifyBeforeCreate {
+		failures := verifyMonitorURLsReachable(c.Request.Context(), []string{input.URL})
+		if len(failures) > 0 {
+			_, notifyData, _ := h.monitorNotificationContext()
+			h.renderPage(c, http.StatusUnprocessableEntity, "admin/monitors/new.html", gin.H{
+				"Error":              monitorUnavailableMessage(failures),
+				"Input":              input,
+				"NotifyTelegram":     input.NotifyTelegram,
+				"NotifySMTP":         input.NotifySMTP,
+				"TelegramConfigured": notifyData["TelegramConfigured"],
+				"SMTPConfigured":     notifyData["SMTPConfigured"],
+			}, PageOptions{Title: "Add Monitor URL", ActiveNav: "monitors"})
+			return
+		}
 	}
 
 	checkInterval, _ := input.ParseCheckIntervalSeconds()
@@ -308,6 +365,16 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 			h.bulkMonitorFormData(input, monitorURLExistsMessage(conflicts...)),
 			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 		return
+	}
+
+	if input.VerifyBeforeCreate {
+		failures := verifyMonitorURLsReachable(c.Request.Context(), urls)
+		if len(failures) > 0 {
+			h.renderPage(c, http.StatusUnprocessableEntity, "admin/monitors/bulk_new.html",
+				h.bulkMonitorFormData(input, monitorUnavailableMessage(failures)),
+				PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+			return
+		}
 	}
 
 	failedURL := ""
