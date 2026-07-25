@@ -9,6 +9,7 @@ import (
 
 	"go-uptime/internal/cliutil"
 	"go-uptime/internal/forms"
+	"go-uptime/internal/repository"
 	"go-uptime/models"
 
 	"github.com/rs/zerolog/log"
@@ -26,7 +27,8 @@ func UsersSeed(db *gorm.DB) {
 		return
 	}
 
-	existing, err := models.FindUserByUsername(db, "admin")
+	repo := repository.NewUserRepository(db)
+	existing, err := repo.FindUserByUsername("admin")
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to check admin")
 	}

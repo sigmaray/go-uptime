@@ -19,12 +19,9 @@ func (w *MonitorWorker) runDueMonitors() {
 		return
 	}
 
-	globalIntervalSeconds := models.GetCheckIntervalSeconds(w.db)
-
 	var due []models.MonitorURL
-	if err := w.db.Where("last_checked_at IS NULL OR last_checked_at <= NOW() - make_interval(secs := COALESCE(check_interval_seconds, ?))", globalIntervalSeconds).Find(&due).Error; err != nil {
+	if err := w.db.Where("next_check_at IS NULL OR next_check_at <= NOW()").Find(&due).Error; err != nil {
 		log.Error().Err(err).Msg("failed to load due monitor urls")
-		applog.AddError("failed to load due monitor urls", err.Error())
 		return
 	}
 
@@ -116,12 +113,12 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 
 	if !result.Up {
 		w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, false, result.ErrMsg)
-		w.markDown(monitor, result.ErrMsg, intPtr(elapsed))
+		w.resultJobs <- checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed)}
 		return
 	}
 
 	w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, true, "")
-	w.markUp(monitor, time.Now(), intPtr(elapsed))
+	w.resultJobs <- checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed)}
 }
 
 func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {

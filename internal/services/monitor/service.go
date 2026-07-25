@@ -134,6 +134,7 @@ func (s *Service) MarkUp(monitor models.MonitorURL, checkedAt time.Time, respons
 		updates := map[string]interface{}{
 			"is_up":           true,
 			"last_checked_at": checkedAt,
+			"next_check_at":   checkedAt.Add(time.Duration(models.MonitorCheckIntervalSeconds(monitor, models.GetCheckIntervalSeconds(tx))) * time.Second),
 			"last_error":      "",
 		}
 		if err := tx.Model(&models.MonitorURL{}).Where("id = ?", monitor.ID).Updates(updates).Error; err != nil {
@@ -171,6 +172,7 @@ func (s *Service) MarkDown(monitor models.MonitorURL, checkedAt time.Time, errMs
 		updates := map[string]interface{}{
 			"is_up":           false,
 			"last_checked_at": checkedAt,
+			"next_check_at":   checkedAt.Add(time.Duration(models.MonitorCheckIntervalSeconds(monitor, models.GetCheckIntervalSeconds(tx))) * time.Second),
 			"last_error":      errMsg,
 		}
 		if err := tx.Model(&models.MonitorURL{}).Where("id = ?", monitor.ID).Updates(updates).Error; err != nil {

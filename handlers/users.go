@@ -7,6 +7,7 @@ import (
 
 	"go-uptime/internal/applog"
 	"go-uptime/internal/forms"
+	"go-uptime/internal/repository"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -69,7 +70,8 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	_, err := models.CreateUser(h.DB, input.Username, input.Password)
+	repo := repository.NewUserRepository(h.DB)
+	_, err := repo.CreateUser(input.Username, input.Password)
 	if err != nil {
 		h.renderPage(c, http.StatusInternalServerError, "admin/users/new.html", gin.H{
 			"Error":    "Failed to create user (maybe username already exists)",

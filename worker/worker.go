@@ -36,19 +36,32 @@ type Stats struct {
 	NotifyCapacity int
 }
 
+// checkResult represents the outcome of a single HTTP check that will be batched into the DB.
+type checkResult struct {
+	monitor models.MonitorURL
+	isUp    bool
+	errMsg  string
+	elapsed *int
+}
+
 // MonitorWorker periodically checks URLs from the database.
 type MonitorWorker struct {
 	db               *gorm.DB
 	cfg              *config.Config
 	client           *http.Client
 	checkConcurrency int
+	// notifyJobs buffers status-change alerts to be sent via external channels (e.g. Telegram/SMTP).
 	notifyJobs       chan notifyJob
+	// resultJobs buffers completed HTTP checks waiting to be persisted to the database in a batch.
+	resultJobs       chan checkResult
 	// notifySender delivers one alert; nil means the default Shoutrrr path.
 	notifySender func(monitor models.MonitorURL, isUp bool, errMsg string)
 
 	stop       chan struct{}
 	loopDone   chan struct{}
 	notifyDone chan struct{}
+	// batchDone is closed when the batchResultsLoop goroutine fully exits.
+	batchDone  chan struct{}
 	started    atomic.Bool
 	stopOnce   sync.Once
 	// paused skips due-monitor checks and maintenance while leaving Running() true.
@@ -80,9 +93,11 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		checkConcurrency: concurrency,
 		client:           urlcheck.NewClient(concurrency),
 		notifyJobs:       make(chan notifyJob, notifyQueueSize),
+		resultJobs:       make(chan checkResult, 2048),
 		stop:             make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		notifyDone:       make(chan struct{}),
+		batchDone:        make(chan struct{}),
 	}
 }
 
@@ -154,6 +169,7 @@ func (w *MonitorWorker) Start() {
 	}
 	go w.backfillUptimeStatsIfNeeded()
 	go w.notifyLoop()
+	go w.batchResultsLoop()
 	go w.loop()
 }
 
@@ -165,6 +181,8 @@ func (w *MonitorWorker) Stop() {
 		}
 		close(w.stop)
 		<-w.loopDone
+		close(w.resultJobs)
+		<-w.batchDone
 		close(w.notifyJobs)
 		<-w.notifyDone
 	})

@@ -26,9 +26,10 @@ type MonitorURL struct {
 	URL                  string `gorm:"uniqueIndex;not null"`
 	IsUp                 *bool
 	LastCheckedAt        *time.Time
-	LastError            string `gorm:"not null;default:''"`
-	NotifyTelegram       bool   `gorm:"not null;default:false"`
-	NotifySMTP           bool   `gorm:"not null;default:false"`
+	NextCheckAt          *time.Time `gorm:"index"`
+	LastError            string     `gorm:"not null;default:''"`
+	NotifyTelegram       bool       `gorm:"not null;default:false"`
+	NotifySMTP           bool       `gorm:"not null;default:false"`
 	CheckIntervalSeconds *int
 }
 

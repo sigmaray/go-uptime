@@ -1,9 +1,6 @@
 package worker
 
 import (
-	"fmt"
-
-	"go-uptime/internal/applog"
 	"go-uptime/internal/notify"
 	"go-uptime/models"
 
@@ -44,14 +41,7 @@ func (w *MonitorWorker) enqueueNotification(monitor models.MonitorURL, isUp bool
 	default:
 		log.Warn().
 			Uint("monitor_id", monitor.ID).
-			Msg("notification queue full, enqueueing asynchronously")
-		applog.AddError(
-			"notification queue full",
-			fmt.Sprintf("monitor_id=%d alert delayed", monitor.ID),
-		)
-		go func() {
-			w.notifyJobs <- job
-		}()
+			Msg("notification queue full, dropping alert")
 	}
 }
 
@@ -76,7 +66,6 @@ func (w *MonitorWorker) sendNotifications(monitor models.MonitorURL, isUp bool, 
 	settings, err := models.LoadNotificationSettings(w.db)
 	if err != nil {
 		log.Error().Err(err).Uint("monitor_id", monitor.ID).Msg("failed to load notification settings")
-		applog.AddError("failed to load notification settings", err.Error())
 		return
 	}
 
@@ -88,6 +77,5 @@ func (w *MonitorWorker) sendNotifications(monitor models.MonitorURL, isUp bool, 
 	}
 	if err := notify.SendMonitorStateChange(settings, monitor, change); err != nil {
 		log.Error().Err(err).Uint("monitor_id", monitor.ID).Msg("failed to send monitor notification")
-		applog.AddError("failed to send monitor notification", err.Error())
 	}
 }

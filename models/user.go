@@ -22,9 +22,7 @@ func CheckPassword(hash, password string) bool {
 }
 
 // CreateUser creates a new user with the given username and password.
-// db is the GORM database handle.
-// username is the unique login name to store.
-// password is the plain-text password that will be bcrypt-hashed before save.
+// Deprecated: use repository.UserRepository instead.
 func CreateUser(db *gorm.DB, username, password string) (User, error) {
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -44,6 +42,7 @@ func CreateUser(db *gorm.DB, username, password string) (User, error) {
 }
 
 // FindUserByUsername looks up a user by username.
+// Deprecated: use repository.UserRepository instead.
 func FindUserByUsername(db *gorm.DB, username string) (*User, error) {
 	var user User
 	err := db.Where("username = ?", username).First(&user).Error

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"go-uptime/internal/applog"
+	"go-uptime/internal/repository"
 	"go-uptime/middlewares"
 	"go-uptime/models"
 
@@ -42,7 +43,8 @@ func (h *Handler) Login(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 
-	user, err := models.FindUserByUsername(h.DB, username)
+	repo := repository.NewUserRepository(h.DB)
+	user, err := repo.FindUserByUsername(username)
 	if err != nil || user == nil || !models.CheckPassword(user.PasswordHash, password) {
 		h.renderPage(c, http.StatusOK, "admin/login/index.html", gin.H{
 			"Error": "Invalid username or password",
