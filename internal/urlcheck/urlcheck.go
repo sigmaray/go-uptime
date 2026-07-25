@@ -12,7 +12,7 @@ import (
 )
 
 // RequestTimeout is the per-request deadline used for monitor probes.
-const RequestTimeout = 15 * time.Second
+const RequestTimeout = 30 * time.Second
 
 // browserLikeUserAgent mimics a common desktop Chrome browser so WAF / bot filters
 // are less likely to reject checks solely because of an obvious monitor User-Agent.
@@ -89,7 +89,7 @@ func newTransport(maxConcurrent int) *http.Transport {
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
+			Timeout:   20 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
@@ -97,7 +97,7 @@ func newTransport(maxConcurrent int) *http.Transport {
 		MaxIdleConnsPerHost:   10,
 		MaxConnsPerHost:       0,
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
+		TLSHandshakeTimeout:   20 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 }
