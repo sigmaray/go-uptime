@@ -116,6 +116,48 @@
     </div>
 </div>
 
+<div class="card mb-4" data-testid="info-heartbeat-hour-chart">
+    <div class="card-body">
+        <h3 class="h5">Heartbeats — past hour</h3>
+        <p class="text-muted small">Checks completed each minute: successful vs failed.</p>
+        <div class="info-heartbeat-chart__summary mb-3">
+            <span data-testid="info-heartbeat-hour-total">{{ .HeartbeatHourChart.Total }} total</span>
+            <span class="info-heartbeat-chart__summary-item info-heartbeat-chart__summary-item--success" data-testid="info-heartbeat-hour-success">{{ .HeartbeatHourChart.TotalSuccess }} successful</span>
+            <span class="info-heartbeat-chart__summary-item info-heartbeat-chart__summary-item--failed" data-testid="info-heartbeat-hour-failed">{{ .HeartbeatHourChart.TotalFailed }} failed</span>
+        </div>
+        <div class="info-heartbeat-chart" role="img" aria-label="Heartbeats per minute for the past hour">
+            <div class="info-heartbeat-chart__plot">
+                {{ range .HeartbeatHourChart.Bars }}
+                <div class="info-heartbeat-chart__column" title="{{ .Title }}" data-testid="info-heartbeat-minute">
+                    <div class="info-heartbeat-chart__bar" style="height: {{ .HeightPercent }}%">
+                        {{ if gt .Failed 0 }}
+                        <div class="info-heartbeat-chart__segment info-heartbeat-chart__segment--failed" style="height: {{ .FailedPercent }}%"></div>
+                        {{ end }}
+                        {{ if gt .Success 0 }}
+                        <div class="info-heartbeat-chart__segment info-heartbeat-chart__segment--success" style="height: {{ .SuccessPercent }}%"></div>
+                        {{ end }}
+                    </div>
+                </div>
+                {{ end }}
+            </div>
+            <div class="info-heartbeat-chart__axis">
+                <span>{{ .HeartbeatHourChart.StartLabel }}</span>
+                <span>{{ .HeartbeatHourChart.EndLabel }}</span>
+            </div>
+        </div>
+        <ul class="info-composition__legend list-unstyled mb-0 mt-3">
+            <li class="info-composition__legend-item">
+                <span class="info-composition__swatch info-composition__swatch--up" aria-hidden="true"></span>
+                <span>Successful</span>
+            </li>
+            <li class="info-composition__legend-item">
+                <span class="info-composition__swatch info-composition__swatch--down" aria-hidden="true"></span>
+                <span>Failed</span>
+            </li>
+        </ul>
+    </div>
+</div>
+
 <div class="card mb-4">
     <div class="card-body">
         <h3 class="h5">Most overdue</h3>

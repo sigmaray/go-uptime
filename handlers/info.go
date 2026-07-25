@@ -65,6 +65,44 @@ type compositionChart struct {
 	Segments []compositionSegment
 }
 
+// heartbeatMinuteBar is one minute column in the past-hour heartbeat chart.
+type heartbeatMinuteBar struct {
+	// Label is the short clock time shown in tooltips (HH:MM in local time).
+	Label string
+	// Title is the full accessible tooltip for the column.
+	Title string
+	// Success is how many heartbeats succeeded in this minute.
+	Success int
+	// Failed is how many heartbeats failed in this minute.
+	Failed int
+	// Total is Success + Failed.
+	Total int
+	// HeightPercent is the column height relative to the busiest minute (0–100).
+	HeightPercent int
+	// SuccessPercent is the success share of this column height (0–100 of HeightPercent stack).
+	SuccessPercent int
+	// FailedPercent is the failed share of this column height.
+	FailedPercent int
+}
+
+// heartbeatHourChart is the past-hour per-minute success/failure breakdown.
+type heartbeatHourChart struct {
+	// Bars are exactly models.HeartbeatHourMinutes columns, oldest first.
+	Bars []heartbeatMinuteBar
+	// MaxPerMinute is the largest Total among Bars (chart scale).
+	MaxPerMinute int
+	// TotalSuccess is successful heartbeats across the whole hour.
+	TotalSuccess int
+	// TotalFailed is failed heartbeats across the whole hour.
+	TotalFailed int
+	// Total is TotalSuccess + TotalFailed.
+	Total int
+	// StartLabel is the oldest minute label shown on the X axis.
+	StartLabel string
+	// EndLabel is the newest minute label shown on the X axis.
+	EndLabel string
+}
+
 // tableRowCount is one PostgreSQL application table with its current row count.
 type tableRowCount struct {
 	// Name is the PostgreSQL table name (for example "monitor_urls").
@@ -110,6 +148,16 @@ func (h *Handler) InfoPage(c *gin.Context) {
 	}
 
 	now := time.Now()
+	minuteCounts, err := models.CountHeartbeatsByMinute(h.DB, now)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to load heartbeat minute counts for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load heartbeat chart.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
+	heartbeatChart := buildHeartbeatHourChart(minuteCounts, now)
+
 	globalIntervalSeconds := models.GetCheckIntervalSeconds(h.DB)
 	backlog := computeMonitorBacklog(monitors, globalIntervalSeconds, now)
 
@@ -133,6 +181,7 @@ func (h *Handler) InfoPage(c *gin.Context) {
 		"UtilizationGauges":  buildUtilizationGauges(workerStats),
 		"FleetComposition":   buildFleetComposition(monitors),
 		"BacklogComposition": buildBacklogComposition(backlog),
+		"HeartbeatHourChart": heartbeatChart,
 		"TableCounts":        tableCounts,
 	}, PageOptions{Title: "Info", ActiveNav: "info"})
 }
@@ -239,6 +288,80 @@ func newCompositionSegment(label string, count, total int, modifier string) comp
 		Count:    count,
 		Percent:  percentOf(count, total),
 		Modifier: modifier,
+	}
+}
+
+// buildHeartbeatHourChart turns sparse per-minute counts into a fixed 60-column chart.
+// counts are non-empty minute buckets from models.CountHeartbeatsByMinute.
+// now is the same reference clock used when loading those counts.
+func buildHeartbeatHourChart(counts []models.HeartbeatMinuteCount, now time.Time) heartbeatHourChart {
+	windowEnd := now.UTC().Truncate(time.Minute)
+	windowStart := windowEnd.Add(-time.Duration(models.HeartbeatHourMinutes-1) * time.Minute)
+	loc := now.Location()
+
+	byMinute := make(map[int64]models.HeartbeatMinuteCount, len(counts))
+	for _, count := range counts {
+		byMinute[count.BucketAt.UTC().Truncate(time.Minute).Unix()] = count
+	}
+
+	bars := make([]heartbeatMinuteBar, 0, models.HeartbeatHourMinutes)
+	maxPerMinute := 0
+	totalSuccess := 0
+	totalFailed := 0
+
+	for i := 0; i < models.HeartbeatHourMinutes; i++ {
+		bucketAt := windowStart.Add(time.Duration(i) * time.Minute)
+		count := byMinute[bucketAt.Unix()]
+		success := int(count.Success)
+		failed := int(count.Failed)
+		total := success + failed
+		if total > maxPerMinute {
+			maxPerMinute = total
+		}
+		totalSuccess += success
+		totalFailed += failed
+
+		label := bucketAt.In(loc).Format("15:04")
+		bars = append(bars, heartbeatMinuteBar{
+			Label:   label,
+			Title:   fmt.Sprintf("%s — %d successful, %d failed (%d total)", label, success, failed, total),
+			Success: success,
+			Failed:  failed,
+			Total:   total,
+		})
+	}
+
+	for i := range bars {
+		bar := &bars[i]
+		bar.HeightPercent = percentOf(bar.Total, maxPerMinute)
+		if bar.Total > 0 {
+			bar.SuccessPercent = percentOf(bar.Success, bar.Total)
+			bar.FailedPercent = 100 - bar.SuccessPercent
+			if bar.Failed == 0 {
+				bar.FailedPercent = 0
+				bar.SuccessPercent = 100
+			} else if bar.Success == 0 {
+				bar.SuccessPercent = 0
+				bar.FailedPercent = 100
+			}
+		}
+	}
+
+	startLabel := ""
+	endLabel := ""
+	if len(bars) > 0 {
+		startLabel = bars[0].Label
+		endLabel = bars[len(bars)-1].Label
+	}
+
+	return heartbeatHourChart{
+		Bars:         bars,
+		MaxPerMinute: maxPerMinute,
+		TotalSuccess: totalSuccess,
+		TotalFailed:  totalFailed,
+		Total:        totalSuccess + totalFailed,
+		StartLabel:   startLabel,
+		EndLabel:     endLabel,
 	}
 }
 

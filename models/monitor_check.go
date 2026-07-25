@@ -18,7 +18,24 @@ const (
 	MaxRecentHeartbeatsList = 500
 	// MaxMonitorDetailHeartbeats is how many heartbeats a monitor detail page loads.
 	MaxMonitorDetailHeartbeats = 200
+	// HeartbeatHourMinutes is how many one-minute buckets the admin info heartbeat chart covers.
+	HeartbeatHourMinutes = 60
 )
+
+// HeartbeatMinuteCount is successful and failed heartbeat totals for one minute bucket.
+type HeartbeatMinuteCount struct {
+	// BucketAt is the start of the minute (UTC, truncated).
+	BucketAt time.Time
+	// Success is how many heartbeats reported up in this minute.
+	Success int64
+	// Failed is how many heartbeats reported down in this minute.
+	Failed int64
+}
+
+// Total returns Success + Failed for the minute.
+func (c HeartbeatMinuteCount) Total() int64 {
+	return c.Success + c.Failed
+}
 
 // MonitorCheck stores the result of a single HTTP availability check.
 type MonitorCheck struct {
@@ -144,6 +161,45 @@ func LoadMonitorChecksPage(db *gorm.DB, monitorID uint, page, perPage int) ([]Mo
 		return nil, err
 	}
 	return checks, nil
+}
+
+// CountHeartbeatsByMinute aggregates heartbeats into one-minute success/failure buckets.
+// db is the database handle used to load recent heartbeats.
+// now is the reference clock; the window ends at the current truncated minute and spans HeartbeatHourMinutes.
+// Returned rows only include minutes that had at least one heartbeat; callers fill empty minutes.
+func CountHeartbeatsByMinute(db *gorm.DB, now time.Time) ([]HeartbeatMinuteCount, error) {
+	windowEnd := now.UTC().Truncate(time.Minute)
+	windowStart := windowEnd.Add(-time.Duration(HeartbeatHourMinutes-1) * time.Minute)
+	until := windowEnd.Add(time.Minute)
+
+	var checks []MonitorCheck
+	if err := db.Select("checked_at", "is_up").
+		Where("checked_at >= ? AND checked_at < ?", windowStart, until).
+		Find(&checks).Error; err != nil {
+		return nil, err
+	}
+
+	byMinute := make(map[int64]*HeartbeatMinuteCount, HeartbeatHourMinutes)
+	for _, check := range checks {
+		bucketAt := check.CheckedAt.UTC().Truncate(time.Minute)
+		key := bucketAt.Unix()
+		entry, ok := byMinute[key]
+		if !ok {
+			entry = &HeartbeatMinuteCount{BucketAt: bucketAt}
+			byMinute[key] = entry
+		}
+		if check.IsUp {
+			entry.Success++
+		} else {
+			entry.Failed++
+		}
+	}
+
+	counts := make([]HeartbeatMinuteCount, 0, len(byMinute))
+	for _, entry := range byMinute {
+		counts = append(counts, *entry)
+	}
+	return counts, nil
 }
 
 // LoadMonitorChecksSince groups check results by monitor ID since the given time.

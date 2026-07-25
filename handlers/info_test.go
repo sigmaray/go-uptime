@@ -180,6 +180,50 @@ func TestBuildBacklogComposition(t *testing.T) {
 	}
 }
 
+func TestBuildHeartbeatHourChart(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 30, 40, 0, time.UTC)
+	current := now.Truncate(time.Minute)
+	counts := []models.HeartbeatMinuteCount{
+		{BucketAt: current.Add(-2 * time.Minute), Success: 3, Failed: 1},
+		{BucketAt: current, Success: 0, Failed: 2},
+	}
+
+	got := buildHeartbeatHourChart(counts, now)
+	if len(got.Bars) != models.HeartbeatHourMinutes {
+		t.Fatalf("len(Bars) = %d, want %d", len(got.Bars), models.HeartbeatHourMinutes)
+	}
+	if got.MaxPerMinute != 4 {
+		t.Fatalf("MaxPerMinute = %d, want 4", got.MaxPerMinute)
+	}
+	if got.TotalSuccess != 3 || got.TotalFailed != 3 || got.Total != 6 {
+		t.Fatalf("totals = success %d failed %d total %d", got.TotalSuccess, got.TotalFailed, got.Total)
+	}
+
+	busy := got.Bars[models.HeartbeatHourMinutes-3]
+	if busy.Success != 3 || busy.Failed != 1 || busy.Total != 4 {
+		t.Fatalf("busy bar = %+v", busy)
+	}
+	if busy.HeightPercent != 100 {
+		t.Fatalf("busy HeightPercent = %d, want 100", busy.HeightPercent)
+	}
+	if busy.SuccessPercent != 75 || busy.FailedPercent != 25 {
+		t.Fatalf("busy shares = success %d failed %d", busy.SuccessPercent, busy.FailedPercent)
+	}
+
+	latest := got.Bars[models.HeartbeatHourMinutes-1]
+	if latest.Success != 0 || latest.Failed != 2 || latest.HeightPercent != 50 {
+		t.Fatalf("latest bar = %+v", latest)
+	}
+	if latest.SuccessPercent != 0 || latest.FailedPercent != 100 {
+		t.Fatalf("latest shares = success %d failed %d", latest.SuccessPercent, latest.FailedPercent)
+	}
+
+	empty := got.Bars[0]
+	if empty.Total != 0 || empty.HeightPercent != 0 {
+		t.Fatalf("empty bar = %+v", empty)
+	}
+}
+
 func TestApplicationTableModels(t *testing.T) {
 	want := []string{
 		"app_settings",

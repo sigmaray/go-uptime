@@ -44,6 +44,13 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-fleet-empty')).toBeVisible();
     await expect(page.getByTestId('info-backlog-empty')).toBeVisible();
 
+    await expect(page.getByTestId('info-heartbeat-hour-chart')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Heartbeats — past hour' })).toBeVisible();
+    await expect(page.getByTestId('info-heartbeat-hour-total')).toHaveText('0 total');
+    await expect(page.getByTestId('info-heartbeat-hour-success')).toHaveText('0 successful');
+    await expect(page.getByTestId('info-heartbeat-hour-failed')).toHaveText('0 failed');
+    await expect(page.getByTestId('info-heartbeat-minute')).toHaveCount(60);
+
     await expect(page.getByTestId('info-table-counts')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Database tables' })).toBeVisible();
     await expect(page.getByTestId('info-table-count-monitor_urls')).toHaveText('0');
@@ -107,5 +114,38 @@ test.describe('Admin info', () => {
     } else {
       await expect(overdueEmpty).toBeVisible();
     }
+  });
+
+  test('shows successful and failed heartbeats on the past-hour chart', async ({ page, request }) => {
+    await apiCall(request, 'sql', {
+      query: `
+        INSERT INTO monitor_urls (name, url, check_interval_seconds, is_up, last_checked_at, created_at, updated_at)
+        VALUES ('Chart Site', 'https://chart.example', 60, true, NOW(), NOW(), NOW())
+      `,
+    });
+    const monitor = await apiCall(request, 'sql', {
+      query: `SELECT id FROM monitor_urls WHERE url = 'https://chart.example'`,
+    });
+    const monitorID = (monitor.rows as string[][])[0][0];
+
+    await apiCall(request, 'sql', {
+      query: `
+        INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up, response_time_ms)
+        VALUES
+          (${monitorID}, date_trunc('minute', NOW()), true, 10),
+          (${monitorID}, date_trunc('minute', NOW()), true, 12),
+          (${monitorID}, date_trunc('minute', NOW()), false, 900),
+          (${monitorID}, date_trunc('minute', NOW()) - INTERVAL '5 minutes', true, 11),
+          (${monitorID}, date_trunc('minute', NOW()) - INTERVAL '5 minutes', false, 800)
+      `,
+    });
+
+    await page.goto('/admin/info');
+
+    await expect(page.getByTestId('info-heartbeat-hour-chart')).toBeVisible();
+    await expect(page.getByTestId('info-heartbeat-hour-total')).toHaveText('5 total');
+    await expect(page.getByTestId('info-heartbeat-hour-success')).toHaveText('3 successful');
+    await expect(page.getByTestId('info-heartbeat-hour-failed')).toHaveText('2 failed');
+    await expect(page.getByTestId('info-heartbeat-minute')).toHaveCount(60);
   });
 });

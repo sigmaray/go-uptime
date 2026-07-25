@@ -206,3 +206,67 @@
 .info-table-counts__name {
     color: #212529;
 }
+
+.info-heartbeat-chart__summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.info-heartbeat-chart__summary-item--success {
+    color: #2ea043;
+    font-weight: 600;
+}
+
+.info-heartbeat-chart__summary-item--failed {
+    color: #cf222e;
+    font-weight: 600;
+}
+
+.info-heartbeat-chart__plot {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 10rem;
+    padding: 0.5rem 0.25rem 0;
+    background-color: var(--bs-gray-100);
+    border-radius: 0.375rem;
+}
+
+.info-heartbeat-chart__column {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.info-heartbeat-chart__bar {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column-reverse;
+    border-radius: 1px 1px 0 0;
+    overflow: hidden;
+}
+
+.info-heartbeat-chart__segment--success {
+    background-color: #2ea043;
+    width: 100%;
+}
+
+.info-heartbeat-chart__segment--failed {
+    background-color: #cf222e;
+    width: 100%;
+}
+
+.info-heartbeat-chart__axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
