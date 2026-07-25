@@ -29,6 +29,8 @@ type ListSort struct {
 	Order string
 	// Path is the list page path used when building sort URLs.
 	Path string
+	// ExtraQuery holds additional query parameters (filters) preserved in sort and page links.
+	ExtraQuery url.Values
 
 	defaultOrder string
 	stableOrder  string
@@ -87,14 +89,21 @@ func (s ListSort) IsDefault() bool {
 	return s.Column == ""
 }
 
-// QueryValues returns sort and order query parameters for pagination and sort links.
+// QueryValues returns sort, order, and ExtraQuery parameters for pagination and sort links.
 func (s ListSort) QueryValues() url.Values {
-	if s.IsDefault() {
+	q := url.Values{}
+	if !s.IsDefault() {
+		q.Set("sort", s.Column)
+		q.Set("order", s.Order)
+	}
+	for key, values := range s.ExtraQuery {
+		for _, value := range values {
+			q.Add(key, value)
+		}
+	}
+	if len(q) == 0 {
 		return nil
 	}
-	q := url.Values{}
-	q.Set("sort", s.Column)
-	q.Set("order", s.Order)
 	return q
 }
 

@@ -25,6 +25,7 @@ type MonitorListItem struct {
 func (h *Handler) MonitorsList(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
+	filter := parseMonitorsListFilter(c)
 	sort := ParseListSort(
 		"/admin/monitors",
 		models.MonitorURL{},
@@ -33,17 +34,21 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		c.Query("order"),
 		"Name", "URL", "IsUp", "LastCheckedAt", "LastError",
 	)
+	sort.ExtraQuery = filter.QueryValues()
 	now := time.Now()
 
+	baseQuery := filter.Apply(h.DB.Model(&models.MonitorURL{}))
+
 	var total int64
-	if err := h.DB.Model(&models.MonitorURL{}).Count(&total).Error; err != nil {
+	if err := baseQuery.Count(&total).Error; err != nil {
 		applog.AddError("failed to count monitors", err.Error())
 		total = 0
 	}
 	page = models.ClampPage(page, total, perPage)
 
 	var monitors []models.MonitorURL
-	query := sort.Apply(h.DB.Model(&models.MonitorURL{}))
+	// Rebuild the filtered query so Count does not leave statement state on the Find.
+	query := sort.Apply(filter.Apply(h.DB.Model(&models.MonitorURL{})))
 	if err := query.
 		Offset(models.PageOffset(page, perPage)).
 		Limit(perPage).
@@ -86,6 +91,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		"Monitors":   items,
 		"Pagination": pagination,
 		"Sort":       sort,
+		"Filter":     filter,
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 

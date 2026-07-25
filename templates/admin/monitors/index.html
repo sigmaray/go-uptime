@@ -6,6 +6,36 @@
         <a href="/admin/monitors/new" class="btn btn-primary">Add URL</a>
     </div>
 </div>
+<form method="get" action="/admin/monitors" class="monitors-filter mb-3" role="search" aria-label="Filter monitors">
+    {{ if not .Sort.IsDefault }}
+    <input type="hidden" name="sort" value="{{ .Sort.Column }}">
+    <input type="hidden" name="order" value="{{ .Sort.Order }}">
+    {{ end }}
+    <div class="monitors-filter__row d-flex flex-wrap gap-3 align-items-end">
+        <div class="monitors-filter__status">
+            <span class="form-label d-block" id="monitors-status-filter-label">Status</span>
+            <div class="btn-group" role="group" aria-labelledby="monitors-status-filter-label">
+                <a href="{{ .Filter.StatusURL "" .Sort }}"
+                   class="btn btn-outline-secondary{{ if .Filter.IsActive "" }} active{{ end }}"{{ if .Filter.IsActive "" }} aria-current="page"{{ end }}>All</a>
+                <a href="{{ .Filter.StatusURL "down" .Sort }}"
+                   class="btn btn-outline-secondary{{ if .Filter.IsActive "down" }} active{{ end }}"{{ if .Filter.IsActive "down" }} aria-current="page"{{ end }}>Down</a>
+                <a href="{{ .Filter.StatusURL "up" .Sort }}"
+                   class="btn btn-outline-secondary{{ if .Filter.IsActive "up" }} active{{ end }}"{{ if .Filter.IsActive "up" }} aria-current="page"{{ end }}>Up</a>
+            </div>
+        </div>
+        <div class="monitors-filter__search flex-grow-1">
+            <label class="form-label" for="monitors-url-search">Search URL</label>
+            <div class="input-group">
+                {{ if .Filter.Status }}
+                <input type="hidden" name="status" value="{{ .Filter.Status }}">
+                {{ end }}
+                <input type="search" class="form-control" id="monitors-url-search" name="q"
+                       value="{{ .Filter.Q }}" placeholder="Search by URL fragment" autocomplete="off">
+                <button type="submit" class="btn btn-outline-secondary">Search</button>
+            </div>
+        </div>
+    </div>
+</form>
 <p class="text-muted">{{ .Pagination.Total }} monitors.</p>
 <div class="table-responsive">
     <table class="table table-striped monitors-table">
