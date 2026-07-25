@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"go-uptime/internal/applog"
@@ -16,6 +17,22 @@ import (
 
 // errMonitorURLExists is shown when create/update hits the unique URL constraint.
 const errMonitorURLExists = "A monitor with this URL already exists"
+
+// monitorURLExistsMessage builds a user-facing conflict message for one or more URLs.
+// urls are the conflicting monitor URLs to include in the message; empty yields the generic text.
+func monitorURLExistsMessage(urls ...string) string {
+	cleaned := make([]string, 0, len(urls))
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			cleaned = append(cleaned, u)
+		}
+	}
+	if len(cleaned) == 0 {
+		return errMonitorURLExists
+	}
+	return fmt.Sprintf("%s: %s", errMonitorURLExists, strings.Join(cleaned, ", "))
+}
 
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
 type MonitorListItem struct {
@@ -224,6 +241,37 @@ func (h *Handler) bulkMonitorFormData(input forms.MonitorURLBulkInput, errMsg st
 	}
 }
 
+// existingMonitorURLs returns which of the candidate URLs are already stored as monitors.
+// db is the GORM handle used for the lookup.
+// candidates are the URLs from the bulk form, in submission order.
+// The returned slice preserves candidates order and omits URLs that do not already exist.
+func existingMonitorURLs(db *gorm.DB, candidates []string) ([]string, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	var found []string
+	if err := db.Model(&models.MonitorURL{}).Where("url IN ?", candidates).Pluck("url", &found).Error; err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, nil
+	}
+
+	existing := make(map[string]struct{}, len(found))
+	for _, u := range found {
+		existing[u] = struct{}{}
+	}
+
+	conflicts := make([]string, 0, len(found))
+	for _, u := range candidates {
+		if _, ok := existing[u]; ok {
+			conflicts = append(conflicts, u)
+		}
+	}
+	return conflicts, nil
+}
+
 // BulkCreateMonitors creates multiple monitors from a comma- or newline-separated URL list.
 // Notification flags and optional check interval apply to every created monitor.
 // Each monitor's Name is set to its URL.
@@ -249,6 +297,20 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	checkInterval, _ := input.ParseCheckIntervalSeconds()
 	urls := input.ParsedURLs()
 
+	if conflicts, err := existingMonitorURLs(h.DB, urls); err != nil {
+		applog.AddError("failed to check existing monitor URLs", err.Error())
+		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, "Failed to create monitor URLs"),
+			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+		return
+	} else if len(conflicts) > 0 {
+		h.renderPage(c, http.StatusConflict, "admin/monitors/bulk_new.html",
+			h.bulkMonitorFormData(input, monitorURLExistsMessage(conflicts...)),
+			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+		return
+	}
+
+	failedURL := ""
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		for _, rawURL := range urls {
 			monitor := models.MonitorURL{
@@ -259,6 +321,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 				NotifySMTP:           input.NotifySMTP,
 			}
 			if err := tx.Create(&monitor).Error; err != nil {
+				failedURL = rawURL
 				return err
 			}
 		}
@@ -269,7 +332,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 		errMsg := "Failed to create monitor URLs"
 		if models.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			errMsg = errMonitorURLExists
+			errMsg = monitorURLExistsMessage(failedURL)
 		}
 		h.renderPage(c, status, "admin/monitors/bulk_new.html",
 			h.bulkMonitorFormData(input, errMsg),

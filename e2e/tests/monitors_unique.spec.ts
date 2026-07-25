@@ -87,7 +87,9 @@ test.describe('Monitor URL uniqueness', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     await expect(page).toHaveURL('/admin/monitors/bulk');
-    await expect(page.locator('.alert-danger')).toContainText('A monitor with this URL already exists');
+    await expect(page.locator('.alert-danger')).toContainText(
+      'A monitor with this URL already exists: https://bulk-dup.example.com',
+    );
 
     const result = await apiCall(request, 'sql', {
       query: `SELECT COUNT(*)::text AS count FROM monitor_urls`,
