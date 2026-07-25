@@ -83,8 +83,10 @@ test.describe('Notifications', () => {
     await page.locator('#notify_telegram').check();
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await page.getByRole('cell', { name: 'notify.example.com', exact: true }).getByRole('link').click();
-    await page.getByRole('link', { name: 'Edit' }).click();
+    await page
+      .getByRole('row', { name: /https:\/\/notify\.example\.com/ })
+      .getByRole('link', { name: 'Edit' })
+      .click();
     await expect(page.locator('#notify_telegram')).toBeChecked();
   });
 });
@@ -102,6 +104,11 @@ test.describe('Monitor uptime display', () => {
     await page.locator('#url').fill('https://uptime-detail.example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
+    const idResult = await apiCall(request, 'sql', {
+      query: `SELECT id::text FROM monitor_urls WHERE url = 'https://uptime-detail.example.com'`,
+    });
+    const monitorID = idResult.rows[0][0] as string;
+
     await apiCall(request, 'sql', {
       query: `UPDATE monitor_urls SET created_at = NOW() - INTERVAL '2 hours'
               WHERE url = 'https://uptime-detail.example.com'`,
@@ -113,7 +120,7 @@ test.describe('Monitor uptime display', () => {
     });
 
     await page.goto('/admin/monitors');
-    await page.getByRole('cell', { name: 'uptime-detail.example.com', exact: true }).getByRole('link').click();
+    await page.getByRole('link', { name: monitorID, exact: true }).click();
 
     const blocks = page.locator('.uptime-stats__item');
     await expect(blocks).toHaveCount(4);

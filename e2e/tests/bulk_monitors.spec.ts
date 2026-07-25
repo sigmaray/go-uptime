@@ -84,10 +84,8 @@ test.describe('Bulk add monitors', () => {
       await page.goto('/admin/monitors');
       await page
         .getByRole('row', { name: new RegExp(escapeRegExp(url)) })
-        .getByRole('link', { name: url, exact: true })
-        .first()
+        .getByRole('link', { name: 'Edit' })
         .click();
-      await page.getByRole('link', { name: 'Edit' }).click();
       await expect(page.locator('#notify_telegram')).toBeChecked();
       await expect(page.locator('#notify_smtp')).toBeChecked();
     }

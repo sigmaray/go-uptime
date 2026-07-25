@@ -104,13 +104,14 @@ func updateClaimedMonitorSchedules(tx *gorm.DB, updates []monitorScheduleUpdate)
 
 // buildNextCheckAtCaseExpression builds the CASE expression used for bulk schedule updates.
 // updates contains monitor ids and their corresponding provisional next_check_at values.
+// THEN branches cast to timestamptz so PostgreSQL accepts the CASE result for next_check_at.
 func buildNextCheckAtCaseExpression(updates []monitorScheduleUpdate) (string, []interface{}) {
 	var b strings.Builder
 	args := make([]interface{}, 0, len(updates)*2)
 	b.WriteString("CASE id")
 	for _, update := range updates {
-		b.WriteString(" WHEN ? THEN ?")
-		args = append(args, update.ID, update.NextCheckAt)
+		b.WriteString(" WHEN ? THEN ?::timestamptz")
+		args = append(args, update.ID, update.NextCheckAt.UTC())
 	}
 	b.WriteString(" END")
 	return b.String(), args

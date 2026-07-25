@@ -9,10 +9,19 @@ import (
 )
 
 // uptimeMonitorSummaryRow is one aggregated uptime result for a monitor.
+// Fields are flat (not embedded) so GORM Raw().Scan maps SQL column names correctly.
 type uptimeMonitorSummaryRow struct {
 	// MonitorURLID is the monitor_urls.id whose buckets were summed.
 	MonitorURLID uint
-	uptimeSummaryRow
+	// UpSeconds is the summed uptime seconds across matched buckets.
+	UpSeconds int64
+	// TotalSeconds is the summed observed seconds across matched buckets.
+	TotalSeconds int64
+}
+
+// summary converts the aggregated SQL row into a UptimeSummary value.
+func (r uptimeMonitorSummaryRow) summary() UptimeSummary {
+	return UptimeSummary{UpSeconds: r.UpSeconds, TotalSeconds: r.TotalSeconds}
 }
 
 // LoadMonitorUptime returns uptime summaries for one monitor across 1h, 24h, 30d, and 365d windows.

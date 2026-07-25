@@ -9,7 +9,8 @@ func TestPruneIncidentsAppliesRetentionAndPerMonitorLimit(t *testing.T) {
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
-	now := time.Now()
+	// Truncate to microseconds: PostgreSQL timestamptz does not store nanoseconds.
+	now := time.Now().Truncate(time.Microsecond)
 	monitor := MonitorURL{Name: "Incident prune", URL: "https://incident-prune.example"}
 	if err := db.Create(&monitor).Error; err != nil {
 		t.Fatalf("create monitor: %v", err)

@@ -67,7 +67,7 @@ test.describe('Monitor URL uniqueness', () => {
     await expect(page.getByText('Saved successfully.')).toBeVisible();
 
     await page
-      .getByRole('row', { name: /Beta/ })
+      .getByRole('row', { name: /https:\/\/beta-unique\.example\.com/ })
       .getByRole('link', { name: 'Edit' })
       .click();
     await page.locator('#url').fill('https://alpha-unique.example.com');

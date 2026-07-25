@@ -66,7 +66,8 @@ func TestPruneMonitorChecksKeepsMostRecentPerMonitor(t *testing.T) {
 		t.Fatalf("create monitor: %v", err)
 	}
 
-	start := time.Now().Add(-monitorCheckRetention - time.Hour)
+	// Truncate to microseconds: PostgreSQL timestamptz does not store nanoseconds.
+	start := time.Now().Add(-monitorCheckRetention - time.Hour).Truncate(time.Microsecond)
 	checks := make([]MonitorCheck, 0, maxMonitorChecksPerMonitor+2)
 	for i := 0; i < maxMonitorChecksPerMonitor+2; i++ {
 		checks = append(checks, MonitorCheck{
