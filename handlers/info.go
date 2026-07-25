@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 // overdueMonitorView holds presentation fields for the most overdue monitor.
@@ -64,13 +65,46 @@ type compositionChart struct {
 	Segments []compositionSegment
 }
 
-// InfoPage shows monitor backlog and live worker queue metrics for operators.
+// tableRowCount is one PostgreSQL application table with its current row count.
+type tableRowCount struct {
+	// Name is the PostgreSQL table name (for example "monitor_urls").
+	Name string
+	// Count is the number of rows currently stored in the table.
+	Count int64
+}
+
+// applicationTableModels lists every GORM model whose PostgreSQL table the app uses.
+// Order is alphabetical by table name so the info page stays stable across reloads.
+var applicationTableModels = []struct {
+	name  string
+	model any
+}{
+	{name: "app_settings", model: &models.AppSetting{}},
+	{name: "incidents", model: &models.Incident{}},
+	{name: "monitor_checks", model: &models.MonitorCheck{}},
+	{name: "monitor_urls", model: &models.MonitorURL{}},
+	{name: "stat_daily", model: &models.StatDaily{}},
+	{name: "stat_hourly", model: &models.StatHourly{}},
+	{name: "stat_minutely", model: &models.StatMinutely{}},
+	{name: "users", model: &models.User{}},
+}
+
+// InfoPage shows monitor backlog, live worker metrics, and PostgreSQL table sizes.
 func (h *Handler) InfoPage(c *gin.Context) {
 	var monitors []models.MonitorURL
 	if err := h.DB.Find(&monitors).Error; err != nil {
 		log.Error().Err(err).Msg("failed to load monitors for info page")
 		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
 			"Error": "Failed to load monitors.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
+
+	tableCounts, err := loadTableRowCounts(h.DB)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to load table row counts for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load table row counts.",
 		}, PageOptions{Title: "Info", ActiveNav: "info"})
 		return
 	}
@@ -99,7 +133,22 @@ func (h *Handler) InfoPage(c *gin.Context) {
 		"UtilizationGauges":  buildUtilizationGauges(workerStats),
 		"FleetComposition":   buildFleetComposition(monitors),
 		"BacklogComposition": buildBacklogComposition(backlog),
+		"TableCounts":        tableCounts,
 	}, PageOptions{Title: "Info", ActiveNav: "info"})
+}
+
+// loadTableRowCounts returns the current row count for each application table.
+// db is the GORM handle used to run COUNT queries against PostgreSQL.
+func loadTableRowCounts(db *gorm.DB) ([]tableRowCount, error) {
+	counts := make([]tableRowCount, 0, len(applicationTableModels))
+	for _, entry := range applicationTableModels {
+		var count int64
+		if err := db.Model(entry.model).Count(&count).Error; err != nil {
+			return nil, fmt.Errorf("count rows in %s: %w", entry.name, err)
+		}
+		counts = append(counts, tableRowCount{Name: entry.name, Count: count})
+	}
+	return counts, nil
 }
 
 // buildUtilizationGauges maps live worker stats into progress-bar view models.

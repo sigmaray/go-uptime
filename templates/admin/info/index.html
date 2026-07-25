@@ -137,7 +137,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card mb-4">
     <div class="card-body">
         <h3 class="h5">Live check wave</h3>
         <p class="text-muted">Current worker wave progress and notification queue depth.</p>
@@ -164,6 +164,31 @@
                         <th scope="row">Notify queue</th>
                         <td data-testid="info-notify-queue">{{ .WorkerStats.NotifyQueued }} / {{ .WorkerStats.NotifyCapacity }}</td>
                     </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="h5">Database tables</h3>
+        <p class="text-muted">Row counts for PostgreSQL tables used by the application.</p>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" data-testid="info-table-counts">
+                <thead>
+                    <tr>
+                        <th scope="col">Table</th>
+                        <th scope="col" class="text-end">Rows</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range .TableCounts }}
+                    <tr data-testid="info-table-row-{{ .Name }}">
+                        <th scope="row"><code class="info-table-counts__name">{{ .Name }}</code></th>
+                        <td class="text-end" data-testid="info-table-count-{{ .Name }}">{{ .Count }}</td>
+                    </tr>
+                    {{ end }}
                 </tbody>
             </table>
         </div>

@@ -202,3 +202,7 @@
 .info-composition__swatch--schedule {
     background-color: #0d6efd;
 }
+
+.info-table-counts__name {
+    color: #212529;
+}

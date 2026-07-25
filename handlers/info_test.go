@@ -179,3 +179,27 @@ func TestBuildBacklogComposition(t *testing.T) {
 		t.Fatalf("schedule segment = %+v", got.Segments[2])
 	}
 }
+
+func TestApplicationTableModels(t *testing.T) {
+	want := []string{
+		"app_settings",
+		"incidents",
+		"monitor_checks",
+		"monitor_urls",
+		"stat_daily",
+		"stat_hourly",
+		"stat_minutely",
+		"users",
+	}
+	if len(applicationTableModels) != len(want) {
+		t.Fatalf("len = %d, want %d", len(applicationTableModels), len(want))
+	}
+	for i, entry := range applicationTableModels {
+		if entry.name != want[i] {
+			t.Fatalf("applicationTableModels[%d].name = %q, want %q", i, entry.name, want[i])
+		}
+		if entry.model == nil {
+			t.Fatalf("applicationTableModels[%d].model is nil", i)
+		}
+	}
+}

@@ -43,6 +43,17 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-utilization-gauges')).toBeVisible();
     await expect(page.getByTestId('info-fleet-empty')).toBeVisible();
     await expect(page.getByTestId('info-backlog-empty')).toBeVisible();
+
+    await expect(page.getByTestId('info-table-counts')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Database tables' })).toBeVisible();
+    await expect(page.getByTestId('info-table-count-monitor_urls')).toHaveText('0');
+    await expect(page.getByTestId('info-table-count-users')).toHaveText('1');
+    await expect(page.getByTestId('info-table-count-incidents')).toHaveText('0');
+    await expect(page.getByTestId('info-table-count-monitor_checks')).toHaveText('0');
+    await expect(page.getByTestId('info-table-count-app_settings')).toBeVisible();
+    await expect(page.getByTestId('info-table-count-stat_minutely')).toBeVisible();
+    await expect(page.getByTestId('info-table-count-stat_hourly')).toBeVisible();
+    await expect(page.getByTestId('info-table-count-stat_daily')).toBeVisible();
   });
 
   test('counts seeded monitors on the info page', async ({ page, request }) => {
@@ -82,6 +93,7 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-backlog-due')).toHaveText('1');
     await expect(page.getByTestId('info-backlog-never')).toHaveText('1');
     await expect(page.getByTestId('info-backlog-schedule')).toHaveText('1');
+    await expect(page.getByTestId('info-table-count-monitor_urls')).toHaveText('3');
 
     const dueText = await page.getByTestId('info-due-waiting').innerText();
     const neverText = await page.getByTestId('info-never-checked').innerText();
