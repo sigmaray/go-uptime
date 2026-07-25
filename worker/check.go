@@ -19,25 +19,16 @@ func (w *MonitorWorker) runDueMonitors() {
 		return
 	}
 
-	var monitors []models.MonitorURL
-	if err := w.db.Find(&monitors).Error; err != nil {
-		log.Error().Err(err).Msg("failed to load monitor urls")
-		applog.AddError("failed to load monitor urls", err.Error())
+	globalIntervalSeconds := models.GetCheckIntervalSeconds(w.db)
+
+	var due []models.MonitorURL
+	if err := w.db.Where("last_checked_at IS NULL OR last_checked_at <= NOW() - make_interval(secs := COALESCE(check_interval_seconds, ?))", globalIntervalSeconds).Find(&due).Error; err != nil {
+		log.Error().Err(err).Msg("failed to load due monitor urls")
+		applog.AddError("failed to load due monitor urls", err.Error())
 		return
 	}
 
 	now := time.Now()
-	globalIntervalSeconds := models.GetCheckIntervalSeconds(w.db)
-
-	due := make([]models.MonitorURL, 0)
-	for _, monitor := range monitors {
-		intervalSeconds := models.MonitorCheckIntervalSeconds(monitor, globalIntervalSeconds)
-		if !IsMonitorDue(monitor.LastCheckedAt, time.Duration(intervalSeconds)*time.Second, now) {
-			continue
-		}
-		due = append(due, monitor)
-	}
-
 	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor, &checkWaveCounters{
 		due:      &w.waveDue,
 		started:  &w.waveStarted,

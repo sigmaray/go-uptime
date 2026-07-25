@@ -1,4 +1,4 @@
-package handlers
+package monitor
 
 import (
 	"testing"
@@ -15,12 +15,12 @@ func TestMonitorURLExistsMessage(t *testing.T) {
 		{
 			name: "no urls",
 			urls: nil,
-			want: errMonitorURLExists,
+			want: ErrMonitorURLExists,
 		},
 		{
 			name: "blank urls",
 			urls: []string{"", "  "},
-			want: errMonitorURLExists,
+			want: ErrMonitorURLExists,
 		},
 		{
 			name: "one url",
@@ -36,9 +36,9 @@ func TestMonitorURLExistsMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitorURLExistsMessage(tt.urls...)
+			got := URLExistsMessage(tt.urls...)
 			if got != tt.want {
-				t.Fatalf("monitorURLExistsMessage() = %q, want %q", got, tt.want)
+				t.Fatalf("URLExistsMessage() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -74,9 +74,9 @@ func TestMonitorUnavailableMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitorUnavailableMessage(tt.failures)
+			got := UnavailableMessage(tt.failures)
 			if got != tt.want {
-				t.Fatalf("monitorUnavailableMessage() = %q, want %q", got, tt.want)
+				t.Fatalf("UnavailableMessage() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -117,13 +117,13 @@ func TestExcludeURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := excludeURLs(tt.urls, tt.exclude)
+			got := ExcludeURLs(tt.urls, tt.exclude)
 			if len(got) != len(tt.want) {
-				t.Fatalf("excludeURLs() len = %d, want %d (%v)", len(got), len(tt.want), got)
+				t.Fatalf("ExcludeURLs() len = %d, want %d (%v)", len(got), len(tt.want), got)
 			}
 			for i := range tt.want {
 				if got[i] != tt.want[i] {
-					t.Fatalf("excludeURLs() = %v, want %v", got, tt.want)
+					t.Fatalf("ExcludeURLs() = %v, want %v", got, tt.want)
 				}
 			}
 		})

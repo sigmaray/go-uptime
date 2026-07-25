@@ -44,11 +44,14 @@ func (w *MonitorWorker) enqueueNotification(monitor models.MonitorURL, isUp bool
 	default:
 		log.Warn().
 			Uint("monitor_id", monitor.ID).
-			Msg("notification queue full, dropping alert")
+			Msg("notification queue full, enqueueing asynchronously")
 		applog.AddError(
 			"notification queue full",
-			fmt.Sprintf("monitor_id=%d dropped alert", monitor.ID),
+			fmt.Sprintf("monitor_id=%d alert delayed", monitor.ID),
 		)
+		go func() {
+			w.notifyJobs <- job
+		}()
 	}
 }
 

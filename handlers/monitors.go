@@ -1,77 +1,19 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"go-uptime/internal/applog"
 	"go-uptime/internal/forms"
-	"go-uptime/internal/urlcheck"
+	monitorsvc "go-uptime/internal/services/monitor"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-// errMonitorURLExists is shown when create/update hits the unique URL constraint.
-const errMonitorURLExists = "A monitor with this URL already exists"
-
-// createVerifyConcurrency caps concurrent reachability probes during create/bulk create.
-const createVerifyConcurrency = 10
-
-// monitorURLExistsMessage builds a user-facing conflict message for one or more URLs.
-// urls are the conflicting monitor URLs to include in the message; empty yields the generic text.
-func monitorURLExistsMessage(urls ...string) string {
-	cleaned := make([]string, 0, len(urls))
-	for _, u := range urls {
-		u = strings.TrimSpace(u)
-		if u != "" {
-			cleaned = append(cleaned, u)
-		}
-	}
-	if len(cleaned) == 0 {
-		return errMonitorURLExists
-	}
-	return fmt.Sprintf("%s: %s", errMonitorURLExists, strings.Join(cleaned, ", "))
-}
-
-// monitorUnavailableMessage builds a user-facing error when verify-before-create finds unreachable sites.
-// failures are probe results that were not up; empty yields a generic message.
-func monitorUnavailableMessage(failures []urlcheck.Result) string {
-	if len(failures) == 0 {
-		return "Site is unavailable and was not created"
-	}
-	parts := make([]string, 0, len(failures))
-	for _, f := range failures {
-		detail := strings.TrimSpace(f.ErrMsg)
-		if detail == "" {
-			parts = append(parts, f.URL)
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s (%s)", f.URL, detail))
-	}
-	if len(failures) == 1 {
-		return fmt.Sprintf("Site is unavailable and was not created: %s", parts[0])
-	}
-	return fmt.Sprintf("Sites are unavailable and were not created: %s", strings.Join(parts, "; "))
-}
-
-// verifyMonitorURLsReachable probes urls with the same up/down rules as the background worker.
-// ctx cancels outstanding probes.
-// urls are absolute HTTP/HTTPS addresses already validated by the form layer.
-// Returns unavailable probe results (empty when every URL is up).
-func verifyMonitorURLsReachable(ctx context.Context, urls []string) []urlcheck.Result {
-	if len(urls) == 0 {
-		return nil
-	}
-	client := urlcheck.NewClient(createVerifyConcurrency)
-	results := urlcheck.ProbeAll(ctx, client, urls, createVerifyConcurrency)
-	return urlcheck.UnavailableURLs(results)
-}
 
 // MonitorListItem is a monitor row with recent uptime check history for the admin list.
 type MonitorListItem struct {
@@ -210,11 +152,11 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	}
 
 	if input.VerifyBeforeCreate {
-		failures := verifyMonitorURLsReachable(c.Request.Context(), []string{input.URL})
+		failures := monitorsvc.VerifyReachable(c.Request.Context(), []string{input.URL})
 		if len(failures) > 0 {
 			_, notifyData, _ := h.monitorNotificationContext()
 			h.renderPage(c, http.StatusUnprocessableEntity, "admin/monitors/new.html", gin.H{
-				"Error":              monitorUnavailableMessage(failures),
+				"Error":              monitorsvc.UnavailableMessage(failures),
 				"Input":              input,
 				"NotifyTelegram":     input.NotifyTelegram,
 				"NotifySMTP":         input.NotifySMTP,
@@ -240,7 +182,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 		errMsg := "Failed to create monitor URL"
 		if models.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			errMsg = errMonitorURLExists
+			errMsg = monitorsvc.ErrMonitorURLExists
 		}
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, status, "admin/monitors/new.html", gin.H{
@@ -298,60 +240,6 @@ func (h *Handler) bulkMonitorFormData(input forms.MonitorURLBulkInput, errMsg st
 	}
 }
 
-// existingMonitorURLs returns which of the candidate URLs are already stored as monitors.
-// db is the GORM handle used for the lookup.
-// candidates are the URLs from the bulk form, in submission order.
-// The returned slice preserves candidates order and omits URLs that do not already exist.
-func existingMonitorURLs(db *gorm.DB, candidates []string) ([]string, error) {
-	if len(candidates) == 0 {
-		return nil, nil
-	}
-
-	var found []string
-	if err := db.Model(&models.MonitorURL{}).Where("url IN ?", candidates).Pluck("url", &found).Error; err != nil {
-		return nil, err
-	}
-	if len(found) == 0 {
-		return nil, nil
-	}
-
-	existing := make(map[string]struct{}, len(found))
-	for _, u := range found {
-		existing[u] = struct{}{}
-	}
-
-	conflicts := make([]string, 0, len(found))
-	for _, u := range candidates {
-		if _, ok := existing[u]; ok {
-			conflicts = append(conflicts, u)
-		}
-	}
-	return conflicts, nil
-}
-
-// excludeURLs returns urls with any entry present in exclude removed, preserving order.
-// urls is the candidate list from the bulk form.
-// exclude is the set of URLs to drop (for example, ones already in the database).
-func excludeURLs(urls, exclude []string) []string {
-	if len(urls) == 0 || len(exclude) == 0 {
-		return urls
-	}
-
-	skip := make(map[string]struct{}, len(exclude))
-	for _, u := range exclude {
-		skip[u] = struct{}{}
-	}
-
-	out := make([]string, 0, len(urls))
-	for _, u := range urls {
-		if _, ok := skip[u]; ok {
-			continue
-		}
-		out = append(out, u)
-	}
-	return out
-}
-
 // BulkCreateMonitors creates multiple monitors from a comma- or newline-separated URL list.
 // Notification flags and optional check interval apply to every created monitor.
 // Each monitor's Name is set to its URL.
@@ -377,7 +265,8 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	checkInterval, _ := input.ParseCheckIntervalSeconds()
 	urls := input.ParsedURLs()
 
-	if conflicts, err := existingMonitorURLs(h.DB, urls); err != nil {
+	svc := monitorsvc.NewService(h.DB)
+	if conflicts, err := svc.ExistingURLs(urls); err != nil {
 		applog.AddError("failed to check existing monitor URLs", err.Error())
 		h.renderPage(c, http.StatusInternalServerError, "admin/monitors/bulk_new.html",
 			h.bulkMonitorFormData(input, "Failed to create monitor URLs"),
@@ -386,11 +275,11 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	} else if len(conflicts) > 0 {
 		if !input.SkipExisting {
 			h.renderPage(c, http.StatusConflict, "admin/monitors/bulk_new.html",
-				h.bulkMonitorFormData(input, monitorURLExistsMessage(conflicts...)),
+				h.bulkMonitorFormData(input, monitorsvc.URLExistsMessage(conflicts...)),
 				PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 			return
 		}
-		urls = excludeURLs(urls, conflicts)
+		urls = monitorsvc.ExcludeURLs(urls, conflicts)
 		if len(urls) == 0 {
 			redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 			return
@@ -398,10 +287,10 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	}
 
 	if input.VerifyBeforeCreate {
-		failures := verifyMonitorURLsReachable(c.Request.Context(), urls)
+		failures := monitorsvc.VerifyReachable(c.Request.Context(), urls)
 		if len(failures) > 0 {
 			h.renderPage(c, http.StatusUnprocessableEntity, "admin/monitors/bulk_new.html",
-				h.bulkMonitorFormData(input, monitorUnavailableMessage(failures)),
+				h.bulkMonitorFormData(input, monitorsvc.UnavailableMessage(failures)),
 				PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 			return
 		}
@@ -429,7 +318,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 		errMsg := "Failed to create monitor URLs"
 		if models.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			errMsg = monitorURLExistsMessage(failedURL)
+			errMsg = monitorsvc.URLExistsMessage(failedURL)
 		}
 		h.renderPage(c, status, "admin/monitors/bulk_new.html",
 			h.bulkMonitorFormData(input, errMsg),
@@ -611,7 +500,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		errMsg := "Failed to update monitor URL"
 		if models.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			errMsg = errMonitorURLExists
+			errMsg = monitorsvc.ErrMonitorURLExists
 		}
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, status, "admin/monitors/edit.html", gin.H{
