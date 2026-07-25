@@ -2,10 +2,18 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// uptimeMonitorSummaryRow is one aggregated uptime result for a monitor.
+type uptimeMonitorSummaryRow struct {
+	// MonitorURLID is the monitor_urls.id whose buckets were summed.
+	MonitorURLID uint
+	uptimeSummaryRow
+}
 
 // LoadMonitorUptime returns uptime summaries for one monitor across 1h, 24h, 30d, and 365d windows.
 // createdAt limits each window to the time after the monitor was created; younger monitors
@@ -36,7 +44,7 @@ func LoadMonitorUptime(db *gorm.DB, monitorID uint, createdAt, now time.Time) (M
 	}, nil
 }
 
-// LoadMonitorUptimes returns uptime summaries for many monitors in three queries.
+// LoadMonitorUptimes returns uptime summaries for many monitors without per-monitor queries.
 // createdAtByID supplies each monitor creation time used to clip reporting windows.
 func LoadMonitorUptimes(db *gorm.DB, monitorIDs []uint, createdAtByID map[uint]time.Time, now time.Time) (map[uint]MonitorUptime, error) {
 	result := make(map[uint]MonitorUptime, len(monitorIDs))
@@ -209,23 +217,14 @@ func sumUptimeBucketsForMonitors(db *gorm.DB, monitorIDs []uint, createdAtByID m
 		return result, nil
 	}
 
-	type row struct {
-		MonitorURLID uint
-		uptimeSummaryRow
+	tableName := tableNameForGranularity(granularity)
+	if tableName == "" {
+		return nil, fmt.Errorf("unknown uptime granularity: %s", granularity)
 	}
 
-	var rows []row
-	tableName := tableNameForGranularity(granularity)
-	for _, id := range eligibleIDs {
-		var summary uptimeSummaryRow
-		err := db.Table(tableName).
-			Select("COALESCE(SUM(up_seconds), 0) AS up_seconds, COALESCE(SUM(total_seconds), 0) AS total_seconds").
-			Where("monitor_url_id = ? AND bucket_at >= ?", id, sinceByID[id].UTC()).
-			Scan(&summary).Error
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, row{MonitorURLID: id, uptimeSummaryRow: summary})
+	rows, err := sumUptimeBucketsForEligibleMonitors(db, tableName, eligibleIDs, sinceByID)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, id := range eligibleIDs {
@@ -235,6 +234,48 @@ func sumUptimeBucketsForMonitors(db *gorm.DB, monitorIDs []uint, createdAtByID m
 		result[row.MonitorURLID] = row.summary()
 	}
 	return result, nil
+}
+
+// sumUptimeBucketsForEligibleMonitors aggregates uptime buckets for many monitors in one SQL query.
+// db is the database handle; tableName is a trusted stat table name; monitorIDs are eligible monitors;
+// sinceByID contains each monitor's lower bucket boundary.
+func sumUptimeBucketsForEligibleMonitors(db *gorm.DB, tableName string, monitorIDs []uint, sinceByID map[uint]time.Time) ([]uptimeMonitorSummaryRow, error) {
+	valuesSQL, args := uptimeBucketRequestValues(monitorIDs, sinceByID)
+	query := fmt.Sprintf(`
+		WITH requested(monitor_url_id, since_at) AS (
+			VALUES %s
+		)
+		SELECT
+			requested.monitor_url_id,
+			COALESCE(SUM(stats.up_seconds), 0) AS up_seconds,
+			COALESCE(SUM(stats.total_seconds), 0) AS total_seconds
+		FROM requested
+		LEFT JOIN %s AS stats
+			ON stats.monitor_url_id = requested.monitor_url_id
+			AND stats.bucket_at >= requested.since_at
+		GROUP BY requested.monitor_url_id
+	`, valuesSQL, tableName)
+
+	var rows []uptimeMonitorSummaryRow
+	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// uptimeBucketRequestValues builds the VALUES list for per-monitor uptime windows.
+// monitorIDs are emitted in order; sinceByID supplies the lower bucket boundary for each id.
+func uptimeBucketRequestValues(monitorIDs []uint, sinceByID map[uint]time.Time) (string, []interface{}) {
+	var b strings.Builder
+	args := make([]interface{}, 0, len(monitorIDs)*2)
+	for i, id := range monitorIDs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("(?::bigint, ?::timestamptz)")
+		args = append(args, id, sinceByID[id].UTC())
+	}
+	return b.String(), args
 }
 
 func tableNameForGranularity(granularity uptimeGranularity) string {

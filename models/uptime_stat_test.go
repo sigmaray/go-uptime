@@ -153,6 +153,68 @@ func TestBuildUptimeHistoryBarsSkipsPreCreationMinutes(t *testing.T) {
 	}
 }
 
+func TestLoadMonitorUptimesAggregatesMultipleMonitors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires database")
+	}
+
+	db := openTestDB(t)
+	resetUptimeStatTables(t, db)
+
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	createdAt := now.AddDate(-2, 0, 0)
+	monitors := []MonitorURL{
+		{Name: "one", URL: "https://one.example.com", CreatedAt: createdAt},
+		{Name: "two", URL: "https://two.example.com", CreatedAt: createdAt},
+	}
+	if err := db.Create(&monitors).Error; err != nil {
+		t.Fatalf("create monitors: %v", err)
+	}
+
+	minutely := []StatMinutely{
+		{MonitorURLID: monitors[0].ID, BucketAt: now.Add(-30 * time.Minute), UpSeconds: 60, TotalSeconds: 60},
+		{MonitorURLID: monitors[1].ID, BucketAt: now.Add(-30 * time.Minute), UpSeconds: 30, TotalSeconds: 60},
+	}
+	if err := db.Create(&minutely).Error; err != nil {
+		t.Fatalf("create minutely stats: %v", err)
+	}
+	hourly := []StatHourly{
+		{MonitorURLID: monitors[0].ID, BucketAt: now.Add(-24 * time.Hour), UpSeconds: 3600, TotalSeconds: 3600},
+		{MonitorURLID: monitors[1].ID, BucketAt: now.Add(-24 * time.Hour), UpSeconds: 1800, TotalSeconds: 3600},
+	}
+	if err := db.Create(&hourly).Error; err != nil {
+		t.Fatalf("create hourly stats: %v", err)
+	}
+	daily := []StatDaily{
+		{MonitorURLID: monitors[0].ID, BucketAt: now.AddDate(0, -1, 0), UpSeconds: 86400, TotalSeconds: 86400},
+		{MonitorURLID: monitors[1].ID, BucketAt: now.AddDate(0, -1, 0), UpSeconds: 43200, TotalSeconds: 86400},
+	}
+	if err := db.Create(&daily).Error; err != nil {
+		t.Fatalf("create daily stats: %v", err)
+	}
+
+	createdAtByID := map[uint]time.Time{
+		monitors[0].ID: createdAt,
+		monitors[1].ID: createdAt,
+	}
+	got, err := LoadMonitorUptimes(db, []uint{monitors[0].ID, monitors[1].ID}, createdAtByID, now)
+	if err != nil {
+		t.Fatalf("LoadMonitorUptimes: %v", err)
+	}
+	if got[monitors[0].ID].Hour1.Percent() != 100 {
+		t.Fatalf("monitor one 1h uptime = %v, want 100", got[monitors[0].ID].Hour1.Percent())
+	}
+	if got[monitors[1].ID].Hour1.Percent() != 50 {
+		t.Fatalf("monitor two 1h uptime = %v, want 50", got[monitors[1].ID].Hour1.Percent())
+	}
+	if got[monitors[1].ID].Days30.Percent() != 50 {
+		t.Fatalf("monitor two 30d uptime = %v, want 50", got[monitors[1].ID].Days30.Percent())
+	}
+	if got[monitors[1].ID].Year1.Percent() != 50 {
+		t.Fatalf("monitor two 1y uptime = %v, want 50", got[monitors[1].ID].Year1.Percent())
+	}
+}
+
 func TestTruncateToBucket(t *testing.T) {
 	ts := time.Date(2026, 7, 4, 15, 47, 33, 500, time.UTC)
 

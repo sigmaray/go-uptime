@@ -1,3 +1,4 @@
+// Package repository contains database access wrappers around GORM models.
 package repository
 
 import (

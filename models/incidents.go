@@ -100,28 +100,23 @@ func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
 		return err
 	}
 
-	var monitorIDs []uint
-	if err := db.Model(&MonitorURL{}).Pluck("id", &monitorIDs).Error; err != nil {
-		return err
+	if maxPerMonitor < 0 {
+		maxPerMonitor = 0
 	}
-
-	for _, id := range monitorIDs {
-		var excess []uint
-		err := db.Model(&Incident{}).
-			Where("monitor_url_id = ? AND resolved_at IS NOT NULL", id).
-			Order("resolved_at DESC").
-			Offset(maxPerMonitor).
-			Pluck("id", &excess).Error
-		if err != nil {
-			return err
-		}
-		if len(excess) == 0 {
-			continue
-		}
-		if err := db.Delete(&Incident{}, excess).Error; err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return db.Exec(`
+		WITH ranked AS (
+			SELECT
+				id,
+				row_number() OVER (
+					PARTITION BY monitor_url_id
+					ORDER BY resolved_at DESC, id DESC
+				) AS rn
+			FROM incidents
+			WHERE resolved_at IS NOT NULL
+		)
+		DELETE FROM incidents
+		USING ranked
+		WHERE incidents.id = ranked.id
+			AND ranked.rn > ?
+	`, maxPerMonitor).Error
 }

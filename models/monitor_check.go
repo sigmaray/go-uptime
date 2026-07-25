@@ -221,30 +221,20 @@ func LoadMonitorChecksSince(db *gorm.DB, since time.Time) (map[uint][]MonitorChe
 func PruneMonitorChecks(db *gorm.DB) error {
 	cutoff := time.Now().Add(-monitorCheckRetention)
 
-	var monitorIDs []uint
-	if err := db.Model(&MonitorURL{}).Pluck("id", &monitorIDs).Error; err != nil {
-		return err
-	}
-
-	for _, id := range monitorIDs {
-		var protected []uint
-		if err := db.Model(&MonitorCheck{}).
-			Where("monitor_url_id = ?", id).
-			Order("checked_at DESC").
-			Limit(maxMonitorChecksPerMonitor).
-			Pluck("id", &protected).Error; err != nil {
-			return err
-		}
-
-		query := db.Where("monitor_url_id = ? AND checked_at < ?", id, cutoff)
-		if len(protected) > 0 {
-			query = query.Where("id NOT IN ?", protected)
-		}
-
-		if err := query.Delete(&MonitorCheck{}).Error; err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return db.Exec(`
+		WITH ranked AS (
+			SELECT
+				id,
+				row_number() OVER (
+					PARTITION BY monitor_url_id
+					ORDER BY checked_at DESC, id DESC
+				) AS rn
+			FROM monitor_checks
+		)
+		DELETE FROM monitor_checks
+		USING ranked
+		WHERE monitor_checks.id = ranked.id
+			AND monitor_checks.checked_at < ?
+			AND ranked.rn > ?
+	`, cutoff, maxMonitorChecksPerMonitor).Error
 }

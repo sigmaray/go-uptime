@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,6 +13,9 @@ import (
 	"go-uptime/config"
 	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func TestMonitorWorkerRunning(t *testing.T) {
@@ -247,6 +252,84 @@ func TestStatsReportsNotifyQueueDepth(t *testing.T) {
 	}
 }
 
+func TestClaimDueMonitorsPostponesScheduleBeforeChecks(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	duePast := now.Add(-time.Minute)
+	future := now.Add(time.Hour)
+	monitors := []models.MonitorURL{
+		{Name: "never checked", URL: "https://never.example.com"},
+		{Name: "past due", URL: "https://past.example.com", NextCheckAt: &duePast},
+		{Name: "future", URL: "https://future.example.com", NextCheckAt: &future},
+	}
+	if err := db.Create(&monitors).Error; err != nil {
+		t.Fatalf("create monitors: %v", err)
+	}
+
+	w := New(db, &config.Config{CheckConcurrency: 1})
+	claimed, err := w.claimDueMonitors(now)
+	if err != nil {
+		t.Fatalf("claimDueMonitors: %v", err)
+	}
+	if len(claimed) != 2 {
+		t.Fatalf("claimed %d monitors, want 2", len(claimed))
+	}
+
+	var refreshed []models.MonitorURL
+	if err := db.Order("id asc").Find(&refreshed).Error; err != nil {
+		t.Fatalf("reload monitors: %v", err)
+	}
+	if len(refreshed) != 3 {
+		t.Fatalf("reloaded %d monitors, want 3", len(refreshed))
+	}
+	for i := 0; i < 2; i++ {
+		monitor := refreshed[i]
+		if monitor.NextCheckAt == nil {
+			t.Fatalf("monitor %d next_check_at is nil after claim", monitor.ID)
+		}
+		if !monitor.NextCheckAt.After(now) {
+			t.Fatalf("monitor %d next_check_at = %v, want after %v", monitor.ID, monitor.NextCheckAt, now)
+		}
+	}
+
+	claimedAgain, err := w.claimDueMonitors(now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("second claimDueMonitors: %v", err)
+	}
+	if len(claimedAgain) != 0 {
+		t.Fatalf("second claim returned %d monitors, want 0", len(claimedAgain))
+	}
+}
+
+func TestProcessBatchReturnsErrorForMissingMonitor(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	w := New(db, &config.Config{CheckConcurrency: 1})
+	err := w.processBatch([]checkResult{
+		{
+			monitor: models.MonitorURL{
+				ID:  999,
+				URL: "https://missing.example.com",
+			},
+			isUp: true,
+		},
+	})
+	if err == nil {
+		t.Fatal("processBatch returned nil error for missing monitor")
+	}
+
+	var checks int64
+	if err := db.Model(&models.MonitorCheck{}).Count(&checks).Error; err != nil {
+		t.Fatalf("count monitor checks: %v", err)
+	}
+	if checks != 0 {
+		t.Fatalf("monitor checks count = %d, want 0", checks)
+	}
+}
+
 func TestNewUsesConfiguredCheckConcurrency(t *testing.T) {
 	cfg := &config.Config{CheckConcurrency: 7}
 	w := New(nil, cfg)
@@ -355,4 +438,95 @@ func TestEnqueueNotificationDoesNotWaitForSlowSender(t *testing.T) {
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("delivered %d jobs, want 2", got)
 	}
+}
+
+// openWorkerTestDB opens the isolated PostgreSQL database used by worker integration tests.
+// t is the active test used for skipping or fatal error reporting.
+func openWorkerTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	dbName := os.Getenv("GO_UPTIME_TEST_DATABASE_NAME")
+	if dbName == "" {
+		t.Skip("GO_UPTIME_TEST_DATABASE_NAME is not set")
+	}
+
+	cfg := config.DatabaseConfig{
+		Host:     workerEnvOrDefault("GO_UPTIME_DATABASE_HOST", "localhost"),
+		Port:     workerEnvOrDefault("GO_UPTIME_DATABASE_PORT", "5432"),
+		User:     workerEnvOrDefault("GO_UPTIME_DATABASE_USER", "postgres"),
+		Password: workerEnvOrDefault("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
+		DBName:   dbName + "_worker",
+	}
+	ensureWorkerTestDatabase(t, cfg)
+
+	db, err := gorm.Open(postgres.Open(fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName,
+	)), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open worker test db: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.MonitorURL{},
+		&models.MonitorCheck{},
+		&models.Incident{},
+		&models.AppSetting{},
+		&models.StatMinutely{},
+		&models.StatHourly{},
+		&models.StatDaily{},
+	); err != nil {
+		t.Fatalf("migrate worker test schema: %v", err)
+	}
+	return db
+}
+
+// ensureWorkerTestDatabase creates the worker test database when it is missing.
+// t is the active test; cfg contains the target database name and connection settings.
+func ensureWorkerTestDatabase(t *testing.T, cfg config.DatabaseConfig) {
+	t.Helper()
+
+	adminDB, err := gorm.Open(postgres.Open(fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password,
+	)), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open postgres admin db: %v", err)
+	}
+	sqlDB, err := adminDB.DB()
+	if err != nil {
+		t.Fatalf("postgres admin handle: %v", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+
+	var exists int64
+	if err := adminDB.Raw("SELECT COUNT(1) FROM pg_database WHERE datname = ?", cfg.DBName).Scan(&exists).Error; err != nil {
+		t.Fatalf("lookup worker test database: %v", err)
+	}
+	if exists > 0 {
+		return
+	}
+	if err := adminDB.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, cfg.DBName)).Error; err != nil {
+		t.Fatalf("create worker test database: %v", err)
+	}
+}
+
+// resetWorkerTestTables truncates tables touched by worker integration tests.
+// t is the active test; db is the worker test database connection.
+func resetWorkerTestTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	for _, table := range []string{"stat_minutely", "stat_hourly", "stat_daily", "monitor_checks", "incidents", "monitor_urls", "app_settings"} {
+		if err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", table)).Error; err != nil {
+			t.Fatalf("truncate %s: %v", table, err)
+		}
+	}
+}
+
+// workerEnvOrDefault returns an environment variable value or a fallback.
+// key is the environment variable name; fallback is used when the value is empty.
+func workerEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

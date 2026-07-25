@@ -51,9 +51,9 @@ type MonitorWorker struct {
 	client           *http.Client
 	checkConcurrency int
 	// notifyJobs buffers status-change alerts to be sent via external channels (e.g. Telegram/SMTP).
-	notifyJobs       chan notifyJob
+	notifyJobs chan notifyJob
 	// resultJobs buffers completed HTTP checks waiting to be persisted to the database in a batch.
-	resultJobs       chan checkResult
+	resultJobs chan checkResult
 	// notifySender delivers one alert; nil means the default Shoutrrr path.
 	notifySender func(monitor models.MonitorURL, isUp bool, errMsg string)
 
@@ -61,9 +61,9 @@ type MonitorWorker struct {
 	loopDone   chan struct{}
 	notifyDone chan struct{}
 	// batchDone is closed when the batchResultsLoop goroutine fully exits.
-	batchDone  chan struct{}
-	started    atomic.Bool
-	stopOnce   sync.Once
+	batchDone chan struct{}
+	started   atomic.Bool
+	stopOnce  sync.Once
 	// paused skips due-monitor checks and maintenance while leaving Running() true.
 	// Used by the Playwright test API so e2e clears do not race in-flight HTTP checks.
 	paused atomic.Bool

@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,6 +13,8 @@ import (
 	"go-uptime/models"
 
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // runDueMonitors checks monitors whose individual interval has elapsed and runs periodic maintenance.
@@ -19,13 +23,13 @@ func (w *MonitorWorker) runDueMonitors() {
 		return
 	}
 
-	var due []models.MonitorURL
-	if err := w.db.Where("next_check_at IS NULL OR next_check_at <= NOW()").Find(&due).Error; err != nil {
+	now := time.Now()
+	due, err := w.claimDueMonitors(now)
+	if err != nil {
 		log.Error().Err(err).Msg("failed to load due monitor urls")
 		return
 	}
 
-	now := time.Now()
 	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor, &checkWaveCounters{
 		due:      &w.waveDue,
 		started:  &w.waveStarted,
@@ -33,6 +37,83 @@ func (w *MonitorWorker) runDueMonitors() {
 	})
 
 	w.runMaintenanceIfDue(now)
+}
+
+// monitorScheduleUpdate is one claimed monitor's next scheduled check time.
+type monitorScheduleUpdate struct {
+	// ID is the monitor_urls.id row that was claimed for the current wave.
+	ID uint
+	// NextCheckAt is the provisional time when the monitor may be checked again.
+	NextCheckAt time.Time
+}
+
+// claimDueMonitors locks currently due monitors and postpones their next check before probing.
+// now is the worker's current clock value used to select due rows and compute provisional schedules.
+func (w *MonitorWorker) claimDueMonitors(now time.Time) ([]models.MonitorURL, error) {
+	var due []models.MonitorURL
+	err := w.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("next_check_at IS NULL OR next_check_at <= ?", now).
+			Order("next_check_at asc NULLS FIRST, id asc").
+			Find(&due).Error
+		if err != nil {
+			return err
+		}
+		if len(due) == 0 {
+			return nil
+		}
+
+		globalInterval := models.GetCheckIntervalSeconds(tx)
+		updates := make([]monitorScheduleUpdate, 0, len(due))
+		for _, monitor := range due {
+			nextAt := now.Add(time.Duration(models.MonitorCheckIntervalSeconds(monitor, globalInterval)) * time.Second)
+			updates = append(updates, monitorScheduleUpdate{ID: monitor.ID, NextCheckAt: nextAt})
+		}
+		return updateClaimedMonitorSchedules(tx, updates)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return due, nil
+}
+
+// updateClaimedMonitorSchedules writes provisional next_check_at values in one SQL update.
+// tx is the transaction that already locked the due monitor rows; updates are the claimed schedules.
+func updateClaimedMonitorSchedules(tx *gorm.DB, updates []monitorScheduleUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	ids := make([]uint, 0, len(updates))
+	for _, update := range updates {
+		ids = append(ids, update.ID)
+	}
+
+	caseSQL, args := buildNextCheckAtCaseExpression(updates)
+	result := tx.Model(&models.MonitorURL{}).
+		Where("id IN ?", ids).
+		Update("next_check_at", gorm.Expr(caseSQL, args...))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != int64(len(updates)) {
+		return fmt.Errorf("claimed %d monitor schedules, updated %d", len(updates), result.RowsAffected)
+	}
+	return nil
+}
+
+// buildNextCheckAtCaseExpression builds the CASE expression used for bulk schedule updates.
+// updates contains monitor ids and their corresponding provisional next_check_at values.
+func buildNextCheckAtCaseExpression(updates []monitorScheduleUpdate) (string, []interface{}) {
+	var b strings.Builder
+	args := make([]interface{}, 0, len(updates)*2)
+	b.WriteString("CASE id")
+	for _, update := range updates {
+		b.WriteString(" WHEN ? THEN ?")
+		args = append(args, update.ID, update.NextCheckAt)
+	}
+	b.WriteString(" END")
+	return b.String(), args
 }
 
 // checkWaveCounters holds atomics updated while a check wave runs.
