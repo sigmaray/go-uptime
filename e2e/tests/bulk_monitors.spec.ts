@@ -41,6 +41,7 @@ test.describe('Bulk add monitors', () => {
     await expect(page).toHaveURL('/admin/monitors/bulk/new');
     await expect(page.getByRole('heading', { name: 'Add multiple Monitor URLs' })).toBeVisible();
     await expect(page.getByText("Each monitor's Name is set to its URL.")).toBeVisible();
+    await expect(page.getByLabel('Skip URLs that already exist')).toBeVisible();
   });
 
   test('creates monitors from comma and newline separated URLs with name equal to URL', async ({ page }) => {

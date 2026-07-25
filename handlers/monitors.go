@@ -329,6 +329,29 @@ func existingMonitorURLs(db *gorm.DB, candidates []string) ([]string, error) {
 	return conflicts, nil
 }
 
+// excludeURLs returns urls with any entry present in exclude removed, preserving order.
+// urls is the candidate list from the bulk form.
+// exclude is the set of URLs to drop (for example, ones already in the database).
+func excludeURLs(urls, exclude []string) []string {
+	if len(urls) == 0 || len(exclude) == 0 {
+		return urls
+	}
+
+	skip := make(map[string]struct{}, len(exclude))
+	for _, u := range exclude {
+		skip[u] = struct{}{}
+	}
+
+	out := make([]string, 0, len(urls))
+	for _, u := range urls {
+		if _, ok := skip[u]; ok {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
 // BulkCreateMonitors creates multiple monitors from a comma- or newline-separated URL list.
 // Notification flags and optional check interval apply to every created monitor.
 // Each monitor's Name is set to its URL.
@@ -361,10 +384,17 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 		return
 	} else if len(conflicts) > 0 {
-		h.renderPage(c, http.StatusConflict, "admin/monitors/bulk_new.html",
-			h.bulkMonitorFormData(input, monitorURLExistsMessage(conflicts...)),
-			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
-		return
+		if !input.SkipExisting {
+			h.renderPage(c, http.StatusConflict, "admin/monitors/bulk_new.html",
+				h.bulkMonitorFormData(input, monitorURLExistsMessage(conflicts...)),
+				PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
+			return
+		}
+		urls = excludeURLs(urls, conflicts)
+		if len(urls) == 0 {
+			redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
+			return
+		}
 	}
 
 	if input.VerifyBeforeCreate {

@@ -23,6 +23,15 @@
         </label>
         <div id="verifyBeforeCreateHelp" class="form-text">If checked, each URL is probed first and none are saved when any site is unavailable.</div>
     </div>
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="skip_existing" name="skip_existing" value="true"
+               {{ if .Input.SkipExisting }}checked{{ end }}
+               aria-describedby="skipExistingHelp">
+        <label class="form-check-label" for="skip_existing">
+            Skip URLs that already exist
+        </label>
+        <div id="skipExistingHelp" class="form-text">If checked, URLs that already have a monitor are skipped instead of failing the whole batch.</div>
+    </div>
     {{ template "admin/monitors/notification_fields.html" . }}
     <button type="submit" class="btn btn-primary">Create</button>
     <a href="/admin/monitors" class="btn btn-link">Cancel</a>

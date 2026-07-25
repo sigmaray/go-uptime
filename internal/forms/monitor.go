@@ -51,8 +51,10 @@ type MonitorURLBulkInput struct {
 	CheckIntervalSeconds string `form:"check_interval_seconds" label:"check interval"`
 	// VerifyBeforeCreate probes every URL before insert when true; unavailable sites reject the whole batch.
 	VerifyBeforeCreate bool `form:"verify_before_create"`
-	NotifyTelegram     bool `form:"-"`
-	NotifySMTP         bool `form:"-"`
+	// SkipExisting omits URLs that already have a monitor instead of returning a conflict error.
+	SkipExisting   bool `form:"skip_existing"`
+	NotifyTelegram bool `form:"-"`
+	NotifySMTP     bool `form:"-"`
 }
 
 // ParseURLList splits raw into individual URLs by commas and newlines, trims whitespace,

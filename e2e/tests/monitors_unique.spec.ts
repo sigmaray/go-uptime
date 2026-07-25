@@ -96,4 +96,48 @@ test.describe('Monitor URL uniqueness', () => {
     });
     expect(result.rows[0][0]).toBe('1');
   });
+
+  test('skips existing URLs in bulk create when skip existing is checked', async ({ page, request }) => {
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_urls (name, url) VALUES ('Existing', 'https://bulk-skip-dup.example.com')`,
+    });
+
+    await page.goto('/admin/monitors/bulk/new');
+    await page.locator('#urls').fill(
+      'https://bulk-skip-new.example.com\nhttps://bulk-skip-dup.example.com',
+    );
+    await page.locator('#skip_existing').check();
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await expect(page).toHaveURL('/admin/monitors');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
+    await expect(page.getByRole('row', { name: /https:\/\/bulk-skip-new\.example\.com/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: /https:\/\/bulk-skip-dup\.example\.com/ })).toBeVisible();
+    await expect(page.locator('.alert-danger')).toHaveCount(0);
+
+    const result = await apiCall(request, 'sql', {
+      query: `SELECT COUNT(*)::text AS count FROM monitor_urls`,
+    });
+    expect(result.rows[0][0]).toBe('2');
+  });
+
+  test('bulk create with skip existing succeeds when every URL already exists', async ({ page, request }) => {
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_urls (name, url) VALUES ('Existing', 'https://bulk-skip-all.example.com')`,
+    });
+
+    await page.goto('/admin/monitors/bulk/new');
+    await page.locator('#urls').fill('https://bulk-skip-all.example.com');
+    await page.locator('#skip_existing').check();
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    await expect(page).toHaveURL('/admin/monitors');
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
+    await expect(page.locator('.alert-danger')).toHaveCount(0);
+
+    const result = await apiCall(request, 'sql', {
+      query: `SELECT COUNT(*)::text AS count FROM monitor_urls`,
+    });
+    expect(result.rows[0][0]).toBe('1');
+  });
 });
