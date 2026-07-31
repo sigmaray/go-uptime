@@ -95,7 +95,13 @@ func (h *Handler) PlaywrightCreateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "user": user})
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+		},
+	})
 }
 
 // PlaywrightSeedApplogRequest is the request body for seeding in-memory applog buffers in tests.

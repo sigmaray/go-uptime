@@ -53,6 +53,24 @@ func TestProbeUp(t *testing.T) {
 	}
 }
 
+func TestProbeCapsResponseBodyDrain(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(make([]byte, MaxProbeBodyBytes+4096))
+	}))
+	defer server.Close()
+
+	client := NewClient(1)
+	start := time.Now()
+	result := Probe(context.Background(), client, server.URL)
+	if !result.Up {
+		t.Fatalf("Probe() Up=false, ErrMsg=%q", result.ErrMsg)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Probe took %v; body drain should be capped", elapsed)
+	}
+}
+
 func TestProbeDownStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

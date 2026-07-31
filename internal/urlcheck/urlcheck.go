@@ -14,6 +14,10 @@ import (
 // RequestTimeout is the per-request deadline used for monitor probes.
 const RequestTimeout = 30 * time.Second
 
+// MaxProbeBodyBytes caps how much of an HTTP response body is drained during a probe.
+// Larger bodies are discarded after this limit so slow/huge downloads cannot hold a check slot.
+const MaxProbeBodyBytes = 64 * 1024
+
 // browserLikeUserAgent mimics a common desktop Chrome browser so WAF / bot filters
 // are less likely to reject checks solely because of an obvious monitor User-Agent.
 const browserLikeUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -124,7 +128,7 @@ func Probe(ctx context.Context, client *http.Client, rawURL string) Result {
 		return result
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, MaxProbeBodyBytes))
 
 	result.StatusCode = resp.StatusCode
 	if !IsUpStatus(resp.StatusCode) {

@@ -26,7 +26,20 @@ func UpdateUptimeStats(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bo
 		return err
 	}
 
-	return addUptimeDuration(db, monitorID, lastCheck.CheckedAt, checkedAt, isUp)
+	return ApplyUptimeInterval(db, monitorID, &lastCheck.CheckedAt, checkedAt, isUp)
+}
+
+// ApplyUptimeInterval attributes [previousCheckedAt, checkedAt) into uptime buckets when a prior check exists.
+// db is the database handle used for persistence.
+// monitorID is the monitor whose buckets are updated.
+// previousCheckedAt is the prior check time; nil means this is the first check and no buckets change.
+// checkedAt is the timestamp of the new check.
+// isUp is the new check result applied to the interval since the previous check.
+func ApplyUptimeInterval(db *gorm.DB, monitorID uint, previousCheckedAt *time.Time, checkedAt time.Time, isUp bool) error {
+	if previousCheckedAt == nil {
+		return nil
+	}
+	return addUptimeDuration(db, monitorID, *previousCheckedAt, checkedAt, isUp)
 }
 
 // BackfillUptimeStats rebuilds uptime buckets from existing monitor check history.

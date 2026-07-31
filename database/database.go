@@ -21,10 +21,15 @@ import (
 )
 
 // DSN builds a PostgreSQL connection string from configuration.
+// c holds host, port, credentials, database name, and SSL mode (defaults to disable when empty).
 func DSN(c config.DatabaseConfig) string {
+	sslMode := c.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
 	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		c.Host, c.Port, c.User, c.Password, c.DBName,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.DBName, sslMode,
 	)
 }
 

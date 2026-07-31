@@ -22,11 +22,11 @@ const notifyQueueSize = 256
 
 // Stats is a point-in-time snapshot of live monitor-check and notify-queue metrics.
 type Stats struct {
-	// DueThisWave is how many monitors were selected for the current check wave.
+	// DueThisWave is how many claimed monitors have not finished probing yet.
 	DueThisWave int
 	// InFlight is how many HTTP checks are executing right now.
 	InFlight int
-	// WaitingForSlot is how many due monitors still wait for a concurrency slot in this wave.
+	// WaitingForSlot is how many claimed monitors still wait for a concurrency slot.
 	WaitingForSlot int
 	// MaxConcurrency is the configured concurrent HTTP check limit.
 	MaxConcurrency int
@@ -38,10 +38,16 @@ type Stats struct {
 
 // checkResult represents the outcome of a single HTTP check that will be batched into the DB.
 type checkResult struct {
+	// monitor is the monitor_urls row snapshot taken when the probe was claimed.
 	monitor models.MonitorURL
-	isUp    bool
-	errMsg  string
+	// isUp is the probe availability result.
+	isUp bool
+	// errMsg is the probe error text; empty when the probe succeeded.
+	errMsg string
+	// elapsed is the probe duration in milliseconds; nil when unknown.
 	elapsed *int
+	// persistAttempts counts how many times this result was re-queued after a failed flush.
+	persistAttempts int
 }
 
 // MonitorWorker periodically checks URLs from the database.
@@ -50,6 +56,8 @@ type MonitorWorker struct {
 	cfg              *config.Config
 	client           *http.Client
 	checkConcurrency int
+	// checkSem limits concurrent HTTP probes across overlapping claim waves.
+	checkSem chan struct{}
 	// notifyJobs buffers status-change alerts to be sent via external channels (e.g. Telegram/SMTP).
 	notifyJobs chan notifyJob
 	// resultJobs buffers completed HTTP checks waiting to be persisted to the database in a batch.
@@ -57,25 +65,26 @@ type MonitorWorker struct {
 	// notifySender delivers one alert; nil means the default Shoutrrr path.
 	notifySender func(monitor models.MonitorURL, isUp bool, errMsg string)
 
-	stop       chan struct{}
-	loopDone   chan struct{}
-	notifyDone chan struct{}
+	stop            chan struct{}
+	loopDone        chan struct{}
+	notifyDone      chan struct{}
+	maintenanceDone chan struct{}
 	// batchDone is closed when the batchResultsLoop goroutine fully exits.
 	batchDone chan struct{}
-	started   atomic.Bool
-	stopOnce  sync.Once
+	// wavesWG tracks in-flight dispatched probe goroutines so Stop can drain them.
+	wavesWG  sync.WaitGroup
+	started  atomic.Bool
+	stopOnce sync.Once
 	// paused skips due-monitor checks and maintenance while leaving Running() true.
 	// Used by the Playwright test API so e2e clears do not race in-flight HTTP checks.
 	paused atomic.Bool
 
-	// waveDue is the size of the current check wave; zero when idle between waves.
+	// waveDue is how many claimed monitors have not finished probing yet.
 	waveDue atomic.Int64
-	// waveStarted counts monitors that have acquired a concurrency slot in this wave.
+	// waveStarted counts monitors that have acquired a concurrency slot and not finished.
 	waveStarted atomic.Int64
 	// inFlight counts HTTP checks currently executing.
 	inFlight atomic.Int64
-
-	lastMaintenanceAt time.Time
 }
 
 // New creates a new background monitoring worker instance.
@@ -91,12 +100,14 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		db:               db,
 		cfg:              cfg,
 		checkConcurrency: concurrency,
+		checkSem:         make(chan struct{}, concurrency),
 		client:           urlcheck.NewClient(concurrency),
 		notifyJobs:       make(chan notifyJob, notifyQueueSize),
 		resultJobs:       make(chan checkResult, 2048),
 		stop:             make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		notifyDone:       make(chan struct{}),
+		maintenanceDone:  make(chan struct{}),
 		batchDone:        make(chan struct{}),
 	}
 }
@@ -162,7 +173,7 @@ func (w *MonitorWorker) Stats() Stats {
 	}
 }
 
-// Start runs the check loop and async notification sender in separate goroutines.
+// Start runs the check loop, batch writer, maintenance, and notification sender.
 func (w *MonitorWorker) Start() {
 	if !w.started.CompareAndSwap(false, true) {
 		return
@@ -170,10 +181,11 @@ func (w *MonitorWorker) Start() {
 	go w.backfillUptimeStatsIfNeeded()
 	go w.notifyLoop()
 	go w.batchResultsLoop()
+	go w.maintenanceLoop()
 	go w.loop()
 }
 
-// Stop stops the check loop, drains queued notifications, then returns.
+// Stop stops the check loop, drains queued results and notifications, then returns.
 func (w *MonitorWorker) Stop() {
 	w.stopOnce.Do(func() {
 		if !w.started.Load() {
@@ -181,6 +193,7 @@ func (w *MonitorWorker) Stop() {
 		}
 		close(w.stop)
 		<-w.loopDone
+		<-w.maintenanceDone
 		close(w.resultJobs)
 		<-w.batchDone
 		close(w.notifyJobs)
@@ -188,6 +201,7 @@ func (w *MonitorWorker) Stop() {
 	})
 }
 
+// loop claims due monitors on a one-second ticker until stop is closed.
 func (w *MonitorWorker) loop() {
 	defer close(w.loopDone)
 
@@ -201,6 +215,8 @@ func (w *MonitorWorker) loop() {
 		case <-ticker.C:
 			w.runDueMonitors()
 		case <-w.stop:
+			// Wait for probes already dispatched so resultJobs is not closed early.
+			w.wavesWG.Wait()
 			return
 		}
 	}

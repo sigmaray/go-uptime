@@ -89,6 +89,26 @@ func FindOpenIncident(db *gorm.DB, monitorURLID uint) (*Incident, error) {
 	return &incident, nil
 }
 
+// FindOpenIncidentsByMonitorIDs loads open incidents for many monitors in one query.
+// db is the database handle used for the query.
+// monitorURLIDs are the monitor_urls.id values to look up; empty input returns an empty map.
+// The returned map is keyed by monitor_url_id and contains at most one open incident per monitor.
+func FindOpenIncidentsByMonitorIDs(db *gorm.DB, monitorURLIDs []uint) (map[uint]Incident, error) {
+	out := make(map[uint]Incident, len(monitorURLIDs))
+	if len(monitorURLIDs) == 0 {
+		return out, nil
+	}
+
+	var incidents []Incident
+	if err := db.Where("monitor_url_id IN ? AND resolved_at IS NULL", monitorURLIDs).Find(&incidents).Error; err != nil {
+		return nil, err
+	}
+	for _, incident := range incidents {
+		out[incident.MonitorURLID] = incident
+	}
+	return out, nil
+}
+
 // PruneIncidents deletes old resolved incidents to limit data growth.
 // db is the database handle used for deletions.
 // retentionDays controls how long resolved incidents are kept.

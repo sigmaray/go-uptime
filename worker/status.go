@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"go-uptime/internal/applog"
@@ -48,16 +49,64 @@ func (w *MonitorWorker) batchResultsLoop() {
 	}
 }
 
-// flushBatch persists a completed result batch and logs a single operational error on failure.
+// flushBatch persists a completed result batch, retries briefly on failure, then re-queues leftovers.
 // batch is the set of completed checks ready to be written to PostgreSQL.
 func (w *MonitorWorker) flushBatch(batch []checkResult) {
-	if err := w.processBatch(batch); err != nil {
-		log.Error().Err(err).Msg("failed to process monitor checks batch")
+	const maxImmediateAttempts = 3
+
+	var err error
+	for attempt := 1; attempt <= maxImmediateAttempts; attempt++ {
+		err = w.processBatch(batch)
+		if err == nil {
+			return
+		}
+		log.Error().Err(err).Int("attempt", attempt).Msg("failed to process monitor checks batch")
+		if attempt < maxImmediateAttempts {
+			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+		}
+	}
+	w.requeueFailedBatch(batch)
+}
+
+// maxPersistRequeues caps how many times a single check result may be put back on resultJobs.
+const maxPersistRequeues = 5
+
+// requeueFailedBatch puts failed results back onto resultJobs so a later flush can retry them.
+// batch is the set that exhausted immediate flush retries.
+func (w *MonitorWorker) requeueFailedBatch(batch []checkResult) {
+	for _, res := range batch {
+		res.persistAttempts++
+		if res.persistAttempts > maxPersistRequeues {
+			log.Error().
+				Uint("monitor_id", res.monitor.ID).
+				Int("persist_attempts", res.persistAttempts).
+				Msg("dropping monitor check result after persist retries")
+			continue
+		}
+		select {
+		case w.resultJobs <- res:
+		default:
+			log.Error().
+				Uint("monitor_id", res.monitor.ID).
+				Msg("result queue full, dropping monitor check result")
+		}
 	}
 }
 
+// monitorStatusUpdate holds one monitor row's fields written after a completed probe.
+type monitorStatusUpdate struct {
+	// ID is the monitor_urls.id being updated.
+	ID uint
+	// IsUp is the latest probe availability.
+	IsUp bool
+	// NextCheckAt is the final schedule after the probe completed.
+	NextCheckAt time.Time
+	// LastError is the probe error text; empty when the probe succeeded.
+	LastError string
+}
+
 // processBatch executes a single all-or-nothing database transaction to save check results.
-// It updates monitor statuses, tracks incident start/end times, calculates uptime stats,
+// It bulk-updates monitor statuses, tracks incident start/end times, calculates uptime stats,
 // and bulk-inserts all individual check history records.
 // batch is the set of completed HTTP probes to persist.
 func (w *MonitorWorker) processBatch(batch []checkResult) error {
@@ -65,77 +114,74 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		return nil
 	}
 
+	batch = collapseBatchByMonitor(batch)
 	now := time.Now()
 
 	err := w.db.Transaction(func(tx *gorm.DB) error {
+		ids := make([]uint, 0, len(batch))
+		for _, res := range batch {
+			ids = append(ids, res.monitor.ID)
+		}
+		var existingIDs []uint
+		if err := tx.Model(&models.MonitorURL{}).Where("id IN ?", ids).Pluck("id", &existingIDs).Error; err != nil {
+			return fmt.Errorf("load existing monitors for batch: %w", err)
+		}
+		if len(existingIDs) == 0 {
+			return fmt.Errorf("bulk update monitor statuses: none of %d monitors still exist", len(batch))
+		}
+		if len(existingIDs) != len(batch) {
+			exist := make(map[uint]struct{}, len(existingIDs))
+			for _, id := range existingIDs {
+				exist[id] = struct{}{}
+			}
+			filtered := make([]checkResult, 0, len(existingIDs))
+			for _, res := range batch {
+				if _, ok := exist[res.monitor.ID]; ok {
+					filtered = append(filtered, res)
+				}
+			}
+			log.Warn().
+				Int("dropped", len(batch)-len(filtered)).
+				Int("remaining", len(filtered)).
+				Msg("dropping deleted monitors from check result batch")
+			batch = filtered
+		}
+
 		checks := make([]models.MonitorCheck, 0, len(batch))
+		statusUpdates := make([]monitorStatusUpdate, 0, len(batch))
 		globalInterval := models.GetCheckIntervalSeconds(tx)
 
 		for _, res := range batch {
-			// Precalculate when this monitor should be checked next.
 			nextAt := now.Add(time.Duration(models.MonitorCheckIntervalSeconds(res.monitor, globalInterval)) * time.Second)
+			statusUpdates = append(statusUpdates, monitorStatusUpdate{
+				ID:          res.monitor.ID,
+				IsUp:        res.isUp,
+				NextCheckAt: nextAt,
+				LastError:   res.errMsg,
+			})
 
-			// Update the monitor's availability and next check time.
-			updates := map[string]interface{}{
-				"is_up":           res.isUp,
-				"last_checked_at": now,
-				"next_check_at":   nextAt,
-				"last_error":      res.errMsg,
-			}
-
-			updateResult := tx.Model(&models.MonitorURL{}).Where("id = ?", res.monitor.ID).Updates(updates)
-			if updateResult.Error != nil {
-				return fmt.Errorf("update monitor %d status: %w", res.monitor.ID, updateResult.Error)
-			}
-			if updateResult.RowsAffected == 0 {
-				return fmt.Errorf("update monitor %d status: monitor not found", res.monitor.ID)
-			}
-
-			// We still need to calculate minutely/hourly/daily stats
-			// We can use the existing UpdateUptimeStats logic here since it relies on DB reads
-			if err := models.UpdateUptimeStats(tx, res.monitor.ID, now, res.isUp); err != nil {
+			if err := models.ApplyUptimeInterval(tx, res.monitor.ID, res.monitor.LastCheckedAt, now, res.isUp); err != nil {
 				return fmt.Errorf("update uptime stats for monitor %d: %w", res.monitor.ID, err)
 			}
 
-			// Create the history record to be bulk-inserted at the end of the transaction.
 			checks = append(checks, models.MonitorCheck{
 				MonitorURLID:   res.monitor.ID,
 				CheckedAt:      now,
 				IsUp:           res.isUp,
 				ResponseTimeMs: res.elapsed,
 			})
-
-			// Handle Incident lifecycle: close existing if UP, create/update if DOWN.
-			openIncident, err := models.FindOpenIncident(tx, res.monitor.ID)
-			if err != nil {
-				return fmt.Errorf("find open incident for monitor %d: %w", res.monitor.ID, err)
-			}
-			if res.isUp {
-				if openIncident != nil {
-					if err := tx.Model(openIncident).Update("resolved_at", now).Error; err != nil {
-						return fmt.Errorf("resolve incident %d for monitor %d: %w", openIncident.ID, res.monitor.ID, err)
-					}
-				}
-			} else {
-				if openIncident == nil {
-					if err := tx.Create(&models.Incident{
-						MonitorURLID: res.monitor.ID,
-						StartedAt:    now,
-						ErrorMessage: res.errMsg,
-					}).Error; err != nil {
-						return fmt.Errorf("create incident for monitor %d: %w", res.monitor.ID, err)
-					}
-				} else if openIncident.ErrorMessage != res.errMsg {
-					if err := tx.Model(openIncident).Update("error_message", res.errMsg).Error; err != nil {
-						return fmt.Errorf("update incident %d for monitor %d: %w", openIncident.ID, res.monitor.ID, err)
-					}
-				}
-			}
 		}
 
-		// Perform a bulk insert for all monitor checks in a single SQL query.
+		if err := updateMonitorStatuses(tx, now, statusUpdates); err != nil {
+			return err
+		}
+
+		if err := applyIncidentChanges(tx, now, batch); err != nil {
+			return err
+		}
+
 		if len(checks) > 0 {
-			if err := tx.Create(&checks).Error; err != nil { // GORM bulk insert
+			if err := tx.Create(&checks).Error; err != nil {
 				return fmt.Errorf("insert monitor checks: %w", err)
 			}
 		}
@@ -160,6 +206,133 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		} else if !res.isUp && wasUp {
 			applog.AddEvent("monitor", fmt.Sprintf("Monitor %q (%s) is DOWN: %s", models.MonitorDisplayName(res.monitor), res.monitor.URL, res.errMsg))
 			w.enqueueNotification(res.monitor, false, res.errMsg)
+		}
+	}
+	return nil
+}
+
+// collapseBatchByMonitor keeps the last result per monitor so bulk updates stay one row per id.
+// batch is the flushed check-result slice that may contain duplicate monitor ids.
+func collapseBatchByMonitor(batch []checkResult) []checkResult {
+	if len(batch) <= 1 {
+		return batch
+	}
+
+	indexByID := make(map[uint]int, len(batch))
+	out := make([]checkResult, 0, len(batch))
+	for _, res := range batch {
+		if i, ok := indexByID[res.monitor.ID]; ok {
+			out[i] = res
+			continue
+		}
+		indexByID[res.monitor.ID] = len(out)
+		out = append(out, res)
+	}
+	return out
+}
+
+// updateMonitorStatuses writes is_up, last_checked_at, next_check_at, and last_error for many monitors.
+// tx is the open transaction; now is the shared last_checked_at timestamp; updates are per-monitor fields.
+func updateMonitorStatuses(tx *gorm.DB, now time.Time, updates []monitorStatusUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	ids := make([]uint, 0, len(updates))
+	var isUpCase, nextAtCase, errCase strings.Builder
+	isUpArgs := make([]interface{}, 0, len(updates)*2)
+	nextAtArgs := make([]interface{}, 0, len(updates)*2)
+	errArgs := make([]interface{}, 0, len(updates)*2)
+
+	isUpCase.WriteString("CASE id")
+	nextAtCase.WriteString("CASE id")
+	errCase.WriteString("CASE id")
+	for _, update := range updates {
+		ids = append(ids, update.ID)
+
+		isUpCase.WriteString(" WHEN ? THEN ?::boolean")
+		isUpArgs = append(isUpArgs, update.ID, update.IsUp)
+
+		nextAtCase.WriteString(" WHEN ? THEN ?::timestamptz")
+		nextAtArgs = append(nextAtArgs, update.ID, update.NextCheckAt.UTC())
+
+		errCase.WriteString(" WHEN ? THEN ?::text")
+		errArgs = append(errArgs, update.ID, update.LastError)
+	}
+	isUpCase.WriteString(" END")
+	nextAtCase.WriteString(" END")
+	errCase.WriteString(" END")
+
+	result := tx.Model(&models.MonitorURL{}).
+		Where("id IN ?", ids).
+		Updates(map[string]interface{}{
+			"is_up":           gorm.Expr(isUpCase.String(), isUpArgs...),
+			"last_checked_at": now,
+			"next_check_at":   gorm.Expr(nextAtCase.String(), nextAtArgs...),
+			"last_error":      gorm.Expr(errCase.String(), errArgs...),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("bulk update monitor statuses: %w", result.Error)
+	}
+	if result.RowsAffected != int64(len(updates)) {
+		return fmt.Errorf("bulk update monitor statuses: updated %d of %d", result.RowsAffected, len(updates))
+	}
+	return nil
+}
+
+// applyIncidentChanges resolves, creates, or updates open incidents for a completed check batch.
+// tx is the open transaction; now is the incident resolution/start timestamp; batch holds probe outcomes.
+func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error {
+	monitorIDs := make([]uint, 0, len(batch))
+	for _, res := range batch {
+		monitorIDs = append(monitorIDs, res.monitor.ID)
+	}
+
+	openByMonitor, err := models.FindOpenIncidentsByMonitorIDs(tx, monitorIDs)
+	if err != nil {
+		return fmt.Errorf("load open incidents: %w", err)
+	}
+
+	resolveIDs := make([]uint, 0)
+	createIncidents := make([]models.Incident, 0)
+	for _, res := range batch {
+		openIncident, hasOpen := openByMonitor[res.monitor.ID]
+		if res.isUp {
+			if hasOpen {
+				resolveIDs = append(resolveIDs, openIncident.ID)
+			}
+			continue
+		}
+		if !hasOpen {
+			createIncidents = append(createIncidents, models.Incident{
+				MonitorURLID: res.monitor.ID,
+				StartedAt:    now,
+				ErrorMessage: res.errMsg,
+			})
+			continue
+		}
+		if openIncident.ErrorMessage != res.errMsg {
+			if err := tx.Model(&models.Incident{}).Where("id = ?", openIncident.ID).
+				Update("error_message", res.errMsg).Error; err != nil {
+				return fmt.Errorf("update incident %d for monitor %d: %w", openIncident.ID, res.monitor.ID, err)
+			}
+		}
+	}
+
+	if len(resolveIDs) > 0 {
+		if err := tx.Model(&models.Incident{}).Where("id IN ?", resolveIDs).
+			Update("resolved_at", now).Error; err != nil {
+			return fmt.Errorf("resolve incidents: %w", err)
+		}
+	}
+	if len(createIncidents) > 0 {
+		for i := range createIncidents {
+			if err := tx.Create(&createIncidents[i]).Error; err != nil {
+				if models.IsUniqueViolation(err) {
+					continue
+				}
+				return fmt.Errorf("create incident for monitor %d: %w", createIncidents[i].MonitorURLID, err)
+			}
 		}
 	}
 	return nil

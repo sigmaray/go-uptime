@@ -151,7 +151,7 @@ func TestRunChecksConcurrentlyRespectsLimit(t *testing.T) {
 		mu.Lock()
 		seen[m.ID] = true
 		mu.Unlock()
-	}, nil)
+	})
 	elapsed := time.Since(start)
 
 	if got := int(checked.Load()); got != monitorCount {
@@ -174,12 +174,12 @@ func TestRunChecksConcurrentlyRespectsLimit(t *testing.T) {
 func TestRunChecksConcurrentlyEmptyAndInvalidLimit(t *testing.T) {
 	runChecksConcurrently(nil, 5, func(models.MonitorURL) {
 		t.Fatal("checkFn must not run for empty list")
-	}, nil)
+	})
 
 	var ran atomic.Int32
 	runChecksConcurrently([]models.MonitorURL{{ID: 1}}, 0, func(models.MonitorURL) {
 		ran.Add(1)
-	}, nil)
+	})
 	if ran.Load() != 1 {
 		t.Fatalf("expected single check with invalid limit, got %d", ran.Load())
 	}
@@ -192,19 +192,11 @@ func TestStatsTracksWaveProgress(t *testing.T) {
 	started := make(chan struct{}, 4)
 	monitors := []models.MonitorURL{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runChecksConcurrently(monitors, w.checkConcurrency, func(models.MonitorURL) {
-			started <- struct{}{}
-			<-release
-		}, &checkWaveCounters{
-			due:      &w.waveDue,
-			started:  &w.waveStarted,
-			inFlight: &w.inFlight,
-		})
-	}()
+	w.dispatchChecks(monitors, func(models.MonitorURL) checkResult {
+		started <- struct{}{}
+		<-release
+		return checkResult{}
+	})
 
 	for i := 0; i < 2; i++ {
 		select {
@@ -235,11 +227,38 @@ func TestStatsTracksWaveProgress(t *testing.T) {
 	}
 
 	close(release)
-	wg.Wait()
+	w.wavesWG.Wait()
 
 	stats = w.Stats()
 	if stats.DueThisWave != 0 || stats.InFlight != 0 || stats.WaitingForSlot != 0 {
 		t.Fatalf("expected idle stats after wave, got %+v", stats)
+	}
+}
+
+func TestClaimBudgetBackpressure(t *testing.T) {
+	w := New(nil, &config.Config{CheckConcurrency: 2})
+	if got := w.claimBudget(); got != 4 {
+		t.Fatalf("claimBudget() = %d, want 4", got)
+	}
+
+	w.waveDue.Store(4)
+	if got := w.claimBudget(); got != 0 {
+		t.Fatalf("claimBudget() with full pending = %d, want 0", got)
+	}
+
+	w.waveDue.Store(1)
+	if got := w.claimBudget(); got != 3 {
+		t.Fatalf("claimBudget() with one pending = %d, want 3", got)
+	}
+}
+
+func TestClaimLeaseDurationAtLeastProbeTimeout(t *testing.T) {
+	wantMin := urlcheck.RequestTimeout*time.Duration(claimWaveMultiplier) + 2*time.Second
+	if got := claimLeaseDuration(10); got != wantMin {
+		t.Fatalf("claimLeaseDuration(10) = %v, want %v", got, wantMin)
+	}
+	if got := claimLeaseDuration(120); got != 120*time.Second {
+		t.Fatalf("claimLeaseDuration(120) = %v, want 120s", got)
 	}
 }
 
@@ -269,7 +288,7 @@ func TestClaimDueMonitorsPostponesScheduleBeforeChecks(t *testing.T) {
 	}
 
 	w := New(db, &config.Config{CheckConcurrency: 1})
-	claimed, err := w.claimDueMonitors(now)
+	claimed, err := w.claimDueMonitors(now, w.claimWaveLimit())
 	if err != nil {
 		t.Fatalf("claimDueMonitors: %v", err)
 	}
@@ -292,14 +311,52 @@ func TestClaimDueMonitorsPostponesScheduleBeforeChecks(t *testing.T) {
 		if !monitor.NextCheckAt.After(now) {
 			t.Fatalf("monitor %d next_check_at = %v, want after %v", monitor.ID, monitor.NextCheckAt, now)
 		}
+		// Short intervals still lease long enough for a full overlapping wave.
+		minLease := now.Add(urlcheck.RequestTimeout*time.Duration(claimWaveMultiplier) + 2*time.Second)
+		if monitor.NextCheckAt.Before(minLease) {
+			t.Fatalf("monitor %d next_check_at = %v, want >= %v", monitor.ID, monitor.NextCheckAt, minLease)
+		}
 	}
 
-	claimedAgain, err := w.claimDueMonitors(now.Add(time.Second))
+	claimedAgain, err := w.claimDueMonitors(now.Add(time.Second), w.claimWaveLimit())
 	if err != nil {
 		t.Fatalf("second claimDueMonitors: %v", err)
 	}
 	if len(claimedAgain) != 0 {
 		t.Fatalf("second claim returned %d monitors, want 0", len(claimedAgain))
+	}
+}
+
+func TestClaimDueMonitorsRespectsLimit(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	duePast := now.Add(-time.Minute)
+	monitors := []models.MonitorURL{
+		{Name: "a", URL: "https://a.example.com", NextCheckAt: &duePast},
+		{Name: "b", URL: "https://b.example.com", NextCheckAt: &duePast},
+		{Name: "c", URL: "https://c.example.com", NextCheckAt: &duePast},
+	}
+	if err := db.Create(&monitors).Error; err != nil {
+		t.Fatalf("create monitors: %v", err)
+	}
+
+	w := New(db, &config.Config{CheckConcurrency: 10})
+	claimed, err := w.claimDueMonitors(now, 2)
+	if err != nil {
+		t.Fatalf("claimDueMonitors: %v", err)
+	}
+	if len(claimed) != 2 {
+		t.Fatalf("claimed %d monitors, want 2", len(claimed))
+	}
+
+	remaining, err := w.claimDueMonitors(now, 10)
+	if err != nil {
+		t.Fatalf("second claimDueMonitors: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("remaining claimed %d, want 1", len(remaining))
 	}
 }
 
@@ -327,6 +384,98 @@ func TestProcessBatchReturnsErrorForMissingMonitor(t *testing.T) {
 	}
 	if checks != 0 {
 		t.Fatalf("monitor checks count = %d, want 0", checks)
+	}
+}
+
+func TestProcessBatchBulkUpdatesMonitorsAndIncidents(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	wasUp := true
+	wasDown := false
+	lastChecked := time.Date(2026, 7, 25, 11, 58, 0, 0, time.UTC)
+	monitors := []models.MonitorURL{
+		{Name: "recovering", URL: "https://up.example.com", IsUp: &wasDown, LastCheckedAt: &lastChecked},
+		{Name: "failing", URL: "https://down.example.com", IsUp: &wasUp, LastCheckedAt: &lastChecked},
+	}
+	if err := db.Create(&monitors).Error; err != nil {
+		t.Fatalf("create monitors: %v", err)
+	}
+	if err := db.Create(&models.Incident{
+		MonitorURLID: monitors[0].ID,
+		StartedAt:    lastChecked,
+		ErrorMessage: "old",
+	}).Error; err != nil {
+		t.Fatalf("create open incident: %v", err)
+	}
+
+	elapsed := 12
+	w := New(db, &config.Config{CheckConcurrency: 2})
+	err := w.processBatch([]checkResult{
+		{monitor: monitors[0], isUp: true, elapsed: &elapsed},
+		{monitor: monitors[1], isUp: false, errMsg: "timeout", elapsed: &elapsed},
+	})
+	if err != nil {
+		t.Fatalf("processBatch: %v", err)
+	}
+
+	var refreshed []models.MonitorURL
+	if err := db.Order("id asc").Find(&refreshed).Error; err != nil {
+		t.Fatalf("reload monitors: %v", err)
+	}
+	if len(refreshed) != 2 {
+		t.Fatalf("reloaded %d monitors, want 2", len(refreshed))
+	}
+	if refreshed[0].IsUp == nil || !*refreshed[0].IsUp {
+		t.Fatalf("monitor 0 is_up = %v, want true", refreshed[0].IsUp)
+	}
+	if refreshed[1].IsUp == nil || *refreshed[1].IsUp {
+		t.Fatalf("monitor 1 is_up = %v, want false", refreshed[1].IsUp)
+	}
+	if refreshed[1].LastError != "timeout" {
+		t.Fatalf("monitor 1 last_error = %q, want timeout", refreshed[1].LastError)
+	}
+
+	var checks int64
+	if err := db.Model(&models.MonitorCheck{}).Count(&checks).Error; err != nil {
+		t.Fatalf("count checks: %v", err)
+	}
+	if checks != 2 {
+		t.Fatalf("checks = %d, want 2", checks)
+	}
+
+	var openCount int64
+	if err := db.Model(&models.Incident{}).Where("resolved_at IS NULL").Count(&openCount).Error; err != nil {
+		t.Fatalf("count open incidents: %v", err)
+	}
+	if openCount != 1 {
+		t.Fatalf("open incidents = %d, want 1", openCount)
+	}
+
+	var resolvedCount int64
+	if err := db.Model(&models.Incident{}).Where("resolved_at IS NOT NULL").Count(&resolvedCount).Error; err != nil {
+		t.Fatalf("count resolved incidents: %v", err)
+	}
+	if resolvedCount != 1 {
+		t.Fatalf("resolved incidents = %d, want 1", resolvedCount)
+	}
+}
+
+func TestCollapseBatchByMonitorKeepsLast(t *testing.T) {
+	batch := []checkResult{
+		{monitor: models.MonitorURL{ID: 1}, isUp: false, errMsg: "first"},
+		{monitor: models.MonitorURL{ID: 2}, isUp: true},
+		{monitor: models.MonitorURL{ID: 1}, isUp: true, errMsg: ""},
+	}
+	got := collapseBatchByMonitor(batch)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].monitor.ID != 1 || !got[0].isUp {
+		t.Fatalf("first collapsed result = %+v, want monitor 1 up", got[0])
+	}
+	if got[1].monitor.ID != 2 {
+		t.Fatalf("second collapsed result id = %d, want 2", got[1].monitor.ID)
 	}
 }
 

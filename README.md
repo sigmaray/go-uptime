@@ -61,12 +61,12 @@ Settings are loaded from the environment (and from `.env` via `godotenv`). See [
 | `GO_UPTIME_ENVIRONMENT` | `development` / other | `development` |
 | `GO_UPTIME_HTTP_PORT` | HTTP port | `8080` |
 | `GO_UPTIME_SESSION_SECRET` | Cookie session secret | required |
-| `GO_UPTIME_SESSION_SECURE` | Secure cookie flag | `false` |
+| `GO_UPTIME_SESSION_SECURE` | Secure cookie flag (defaults to `true` outside development if unset) | `false` in `.env.example` |
 | `GO_UPTIME_INCIDENT_RETENTION_DAYS` | How long resolved incidents are kept | `90` |
 | `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Cap of resolved incidents per monitor | `100` |
 | `GO_UPTIME_CHECK_CONCURRENCY` | Max concurrent HTTP checks | `150` |
-| `GO_UPTIME_DATABASE_*` | Host, port, user, password, database name | see `.env.example` |
-| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Test REST API for e2e | `false` |
+| `GO_UPTIME_DATABASE_*` | Host, port, user, password, database name, sslmode | see `.env.example` |
+| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Test REST API for e2e (development only) | `false` |
 | `GO_UPTIME_TEST_DATABASE_NAME` | Database name for tests | `go-uptime-test` |
 | `GIN_MODE` | Gin mode | `release` |
 | `LOG_LEVEL` | zerolog level | `info` |
@@ -183,7 +183,9 @@ e2e/           Playwright
 - Do not commit `.env` or real secrets.
 - Change `GO_UPTIME_SESSION_SECRET` and the database password before production.
 - After `db-users-seed`, change the `admin` password immediately.
-- Keep `GO_UPTIME_ENABLE_PLAYWRIGHT_API` disabled outside tests.
+- Keep `GO_UPTIME_ENABLE_PLAYWRIGHT_API` disabled outside tests; it is refused unless `GO_UPTIME_ENVIRONMENT=development`.
+- Behind HTTPS set `GO_UPTIME_SESSION_SECURE=true` (or leave it unset outside development so it defaults on).
+- Prefer `GO_UPTIME_DATABASE_SSLMODE=require` (or stricter) when PostgreSQL is not on a private network.
 - The admin **Tools** section is available only when `GO_UPTIME_ENVIRONMENT=development`.
 
 ## License

@@ -119,6 +119,9 @@ func Run(cfg *config.Config, migrations embed.FS) {
 	}
 
 	if cfg.EnablePlaywrightAPI {
+		if !cfg.IsDevelopment() {
+			log.Fatal().Msg("Playwright API requires GO_UPTIME_ENVIRONMENT=development")
+		}
 		pw := r.Group("/api/playwright")
 		{
 			pw.POST("/sql", h.PlaywrightExecuteSQL)

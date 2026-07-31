@@ -61,12 +61,12 @@ make server
 | `GO_UPTIME_ENVIRONMENT` | `development` / иное | `development` |
 | `GO_UPTIME_HTTP_PORT` | HTTP-порт | `8080` |
 | `GO_UPTIME_SESSION_SECRET` | Секрет cookie-сессии | обязателен |
-| `GO_UPTIME_SESSION_SECURE` | Secure-флаг cookie | `false` |
+| `GO_UPTIME_SESSION_SECURE` | Secure-флаг cookie (вне development по умолчанию `true`, если не задан) | `false` в `.env.example` |
 | `GO_UPTIME_INCIDENT_RETENTION_DAYS` | Срок хранения закрытых инцидентов | `90` |
 | `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Лимит закрытых инцидентов на монитор | `100` |
 | `GO_UPTIME_CHECK_CONCURRENCY` | Максимум параллельных HTTP-проверок | `150` |
-| `GO_UPTIME_DATABASE_*` | Хост, порт, пользователь, пароль, имя БД | см. `.env.example` |
-| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Тестовый REST API для e2e | `false` |
+| `GO_UPTIME_DATABASE_*` | Хост, порт, пользователь, пароль, имя БД, sslmode | см. `.env.example` |
+| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Тестовый REST API для e2e (только development) | `false` |
 | `GO_UPTIME_TEST_DATABASE_NAME` | Имя БД для тестов | `go-uptime-test` |
 | `GIN_MODE` | Режим Gin | `release` |
 | `LOG_LEVEL` | Уровень zerolog | `info` |
@@ -183,7 +183,9 @@ e2e/           Playwright
 - Не коммитьте `.env` и реальные секреты.
 - Смените `GO_UPTIME_SESSION_SECRET` и пароль БД перед продакшеном.
 - После `db-users-seed` сразу смените пароль `admin`.
-- `GO_UPTIME_ENABLE_PLAYWRIGHT_API` оставляйте выключенным вне тестов.
+- `GO_UPTIME_ENABLE_PLAYWRIGHT_API` оставляйте выключенным вне тестов; флаг принимается только при `GO_UPTIME_ENVIRONMENT=development`.
+- За HTTPS ставьте `GO_UPTIME_SESSION_SECURE=true` (или не задавайте вне development — тогда Secure включается по умолчанию).
+- Для PostgreSQL не в private-сети предпочитайте `GO_UPTIME_DATABASE_SSLMODE=require` (или строже).
 - Раздел **Tools** в админке доступен только при `GO_UPTIME_ENVIRONMENT=development`.
 
 ## Лицензия

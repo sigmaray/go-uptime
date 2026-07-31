@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -26,6 +27,7 @@ type Config struct {
 	// CheckConcurrency is how many HTTP monitor checks may run at once.
 	CheckConcurrency int `envconfig:"GO_UPTIME_CHECK_CONCURRENCY" default:"150"`
 
+	// EnablePlaywrightAPI exposes the destructive test REST API. Allowed only when Environment is development.
 	EnablePlaywrightAPI bool `envconfig:"GO_UPTIME_ENABLE_PLAYWRIGHT_API" default:"false"`
 
 	Database DatabaseConfig
@@ -38,6 +40,8 @@ type DatabaseConfig struct {
 	User     string `envconfig:"GO_UPTIME_DATABASE_USER" default:"gouptime"`
 	DBName   string `envconfig:"GO_UPTIME_DATABASE_NAME" default:"gouptime"`
 	Password string `envconfig:"GO_UPTIME_DATABASE_PASSWORD" required:"true"`
+	// SSLMode is the libpq sslmode value (disable, require, verify-full, etc.).
+	SSLMode string `envconfig:"GO_UPTIME_DATABASE_SSLMODE" default:"disable"`
 }
 
 // IsDevelopment returns true when the application runs in development mode.
@@ -46,10 +50,26 @@ func (c *Config) IsDevelopment() bool {
 }
 
 // Load reads configuration from environment variables.
+// It defaults SessionSecure to true outside development when GO_UPTIME_SESSION_SECURE is unset,
+// rejects Playwright API outside development, and normalizes an empty SSLMode to disable.
 func Load() (*Config, error) {
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
+
+	// Outside development, Secure cookies default on unless explicitly configured.
+	if !cfg.IsDevelopment() && os.Getenv("GO_UPTIME_SESSION_SECURE") == "" {
+		cfg.SessionSecure = true
+	}
+
+	if cfg.EnablePlaywrightAPI && !cfg.IsDevelopment() {
+		return nil, fmt.Errorf("GO_UPTIME_ENABLE_PLAYWRIGHT_API requires GO_UPTIME_ENVIRONMENT=development")
+	}
+
+	if cfg.Database.SSLMode == "" {
+		cfg.Database.SSLMode = "disable"
+	}
+
 	return &cfg, nil
 }

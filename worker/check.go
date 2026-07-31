@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"go-uptime/internal/applog"
@@ -17,26 +15,49 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// runDueMonitors checks monitors whose individual interval has elapsed and runs periodic maintenance.
+// claimWaveMultiplier sizes each claim relative to check concurrency so the next
+// claim can start while a prior wave is still draining slow probes.
+const claimWaveMultiplier = 2
+
+// runDueMonitors claims a bounded set of due monitors and dispatches probes without waiting.
 func (w *MonitorWorker) runDueMonitors() {
 	if w.Paused() {
 		return
 	}
 
+	limit := w.claimBudget()
+	if limit < 1 {
+		return
+	}
+
 	now := time.Now()
-	due, err := w.claimDueMonitors(now)
+	due, err := w.claimDueMonitors(now, limit)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load due monitor urls")
 		return
 	}
+	if len(due) == 0 {
+		return
+	}
 
-	runChecksConcurrently(due, w.checkConcurrency, w.checkMonitor, &checkWaveCounters{
-		due:      &w.waveDue,
-		started:  &w.waveStarted,
-		inFlight: &w.inFlight,
-	})
+	w.dispatchChecks(due, w.checkMonitor)
+}
 
-	w.runMaintenanceIfDue(now)
+// claimWaveLimit is the maximum number of monitors claimed in one scheduling tick.
+// It returns twice the HTTP concurrency so slow probes do not starve the next claim.
+func (w *MonitorWorker) claimWaveLimit() int {
+	return w.checkConcurrency * claimWaveMultiplier
+}
+
+// claimBudget is how many additional monitors may be claimed given currently pending work.
+// It returns zero when pending claimed checks already fill the wave limit (backpressure).
+func (w *MonitorWorker) claimBudget() int {
+	limit := w.claimWaveLimit()
+	pending := int(w.waveDue.Load())
+	if pending >= limit {
+		return 0
+	}
+	return limit - pending
 }
 
 // monitorScheduleUpdate is one claimed monitor's next scheduled check time.
@@ -49,12 +70,18 @@ type monitorScheduleUpdate struct {
 
 // claimDueMonitors locks currently due monitors and postpones their next check before probing.
 // now is the worker's current clock value used to select due rows and compute provisional schedules.
-func (w *MonitorWorker) claimDueMonitors(now time.Time) ([]models.MonitorURL, error) {
+// limit caps how many due rows are claimed in this transaction; values below 1 claim nothing.
+func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.MonitorURL, error) {
+	if limit < 1 {
+		return nil, nil
+	}
+
 	var due []models.MonitorURL
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Where("next_check_at IS NULL OR next_check_at <= ?", now).
 			Order("next_check_at asc NULLS FIRST, id asc").
+			Limit(limit).
 			Find(&due).Error
 		if err != nil {
 			return err
@@ -66,8 +93,11 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time) ([]models.MonitorURL, er
 		globalInterval := models.GetCheckIntervalSeconds(tx)
 		updates := make([]monitorScheduleUpdate, 0, len(due))
 		for _, monitor := range due {
-			nextAt := now.Add(time.Duration(models.MonitorCheckIntervalSeconds(monitor, globalInterval)) * time.Second)
-			updates = append(updates, monitorScheduleUpdate{ID: monitor.ID, NextCheckAt: nextAt})
+			intervalSec := models.MonitorCheckIntervalSeconds(monitor, globalInterval)
+			updates = append(updates, monitorScheduleUpdate{
+				ID:          monitor.ID,
+				NextCheckAt: now.Add(claimLeaseDuration(intervalSec)),
+			})
 		}
 		return updateClaimedMonitorSchedules(tx, updates)
 	})
@@ -75,6 +105,21 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time) ([]models.MonitorURL, er
 		return nil, err
 	}
 	return due, nil
+}
+
+// claimLeaseDuration is how long a claimed monitor stays off the due queue before probing finishes.
+// intervalSeconds is the monitor's configured check interval.
+// The lease covers a full claim wave (claimWaveMultiplier probe rounds) plus a short flush buffer so
+// overlapping waves cannot reclaim a monitor while it waits for a slot, probes, or awaits batch persist.
+func claimLeaseDuration(intervalSeconds int) time.Duration {
+	interval := time.Duration(intervalSeconds) * time.Second
+	// Worst case: last monitor in a 2x-concurrency wave waits one full probe round, then probes,
+	// then waits up to the batch flush interval before next_check_at is rewritten.
+	lease := urlcheck.RequestTimeout*time.Duration(claimWaveMultiplier) + 2*time.Second
+	if interval > lease {
+		return interval
+	}
+	return lease
 }
 
 // updateClaimedMonitorSchedules writes provisional next_check_at values in one SQL update.
@@ -117,61 +162,47 @@ func buildNextCheckAtCaseExpression(updates []monitorScheduleUpdate) (string, []
 	return b.String(), args
 }
 
-// checkWaveCounters holds atomics updated while a check wave runs.
-// due is the wave size; started counts acquired slots; inFlight counts running checks.
-type checkWaveCounters struct {
-	due      *atomic.Int64
-	started  *atomic.Int64
-	inFlight *atomic.Int64
-}
-
-// runChecksConcurrently runs checkFn for each monitor with at most maxConcurrent goroutines.
-// monitors is the list of due monitors to check in this wave.
-// maxConcurrent caps how many HTTP checks may run at the same time; values below 1 become 1.
-// checkFn performs one monitor check and must be safe to call concurrently.
-// counters, when non-nil, receives live wave progress for Stats().
-func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, checkFn func(models.MonitorURL), counters *checkWaveCounters) {
+// dispatchChecks starts probe goroutines for monitors and returns without waiting.
+// monitors is the claimed set to probe; checkFn runs one probe and must be concurrency-safe.
+// A shared semaphore caps total in-flight HTTP work across overlapping waves.
+// The concurrency slot is released before the result is enqueued so a slow DB flush cannot
+// pin HTTP slots while resultJobs is full.
+func (w *MonitorWorker) dispatchChecks(monitors []models.MonitorURL, checkFn func(models.MonitorURL) checkResult) {
 	if len(monitors) == 0 {
 		return
 	}
-	if maxConcurrent < 1 {
-		maxConcurrent = 1
-	}
 
-	if counters != nil {
-		counters.due.Store(int64(len(monitors)))
-		counters.started.Store(0)
-		counters.inFlight.Store(0)
-		defer func() {
-			counters.due.Store(0)
-			counters.started.Store(0)
-			counters.inFlight.Store(0)
+	w.waveDue.Add(int64(len(monitors)))
+	for _, monitor := range monitors {
+		m := monitor
+		w.wavesWG.Add(1)
+		go func() {
+			defer w.wavesWG.Done()
+			defer w.waveDue.Add(-1)
+
+			w.checkSem <- struct{}{}
+			w.waveStarted.Add(1)
+			w.inFlight.Add(1)
+			res := checkFn(m)
+			<-w.checkSem
+			w.inFlight.Add(-1)
+			w.waveStarted.Add(-1)
+
+			w.enqueueCheckResult(res)
 		}()
 	}
+}
 
-	sem := make(chan struct{}, maxConcurrent)
-	var wg sync.WaitGroup
-
-	for _, monitor := range monitors {
-		wg.Add(1)
-		sem <- struct{}{}
-		if counters != nil {
-			counters.started.Add(1)
-			counters.inFlight.Add(1)
-		}
-		go func(m models.MonitorURL) {
-			defer wg.Done()
-			defer func() {
-				<-sem
-				if counters != nil {
-					counters.inFlight.Add(-1)
-				}
-			}()
-			checkFn(m)
-		}(monitor)
+// enqueueCheckResult puts one probe outcome onto resultJobs without holding a check slot.
+// res is the completed probe result to persist; if the queue is full the result is dropped and logged.
+func (w *MonitorWorker) enqueueCheckResult(res checkResult) {
+	select {
+	case w.resultJobs <- res:
+	default:
+		log.Error().
+			Uint("monitor_id", res.monitor.ID).
+			Msg("result queue full, dropping monitor check result")
 	}
-
-	wg.Wait()
 }
 
 // IsMonitorDue reports whether a monitor should be checked at now based on its last check time.
@@ -185,7 +216,9 @@ func IsMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Tim
 	return now.Sub(*lastCheckedAt) >= interval
 }
 
-func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
+// checkMonitor probes one monitor and returns the result for batched persistence.
+// monitor is the claimed monitor_urls row to probe.
+func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) checkResult {
 	ctx, cancel := context.WithTimeout(context.Background(), urlcheck.RequestTimeout)
 	defer cancel()
 
@@ -195,18 +228,22 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) {
 
 	if !result.Up {
 		w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, false, result.ErrMsg)
-		w.resultJobs <- checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed)}
-		return
+		return checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed)}
 	}
 
 	w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, true, "")
-	w.resultJobs <- checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed)}
+	return checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed)}
 }
 
+// recordMonitorRequest stores one probe outcome in the in-memory request log ring.
+// monitorName is the display name; url is the probed address; statusCode and responseTimeMs
+// describe the HTTP outcome; isUp is availability; errMsg explains failures.
 func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
 	applog.AddMonitorRequest(monitorName, url, statusCode, responseTimeMs, isUp, errMsg)
 }
 
+// intPtr returns a pointer to v for optional integer fields.
+// v is the integer value to box.
 func intPtr(v int) *int {
 	return &v
 }
