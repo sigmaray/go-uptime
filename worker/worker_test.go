@@ -252,6 +252,76 @@ func TestClaimBudgetBackpressure(t *testing.T) {
 	}
 }
 
+func TestClaimBudgetResultQueueBackpressure(t *testing.T) {
+	w := New(nil, &config.Config{CheckConcurrency: 2})
+
+	for i := 0; i < resultQueueSize; i++ {
+		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: uint(i + 1)}}
+	}
+	if got := w.claimBudget(); got != 0 {
+		t.Fatalf("claimBudget() with full result queue = %d, want 0", got)
+	}
+
+	<-w.resultJobs
+	w.waveDue.Store(0)
+	if got := w.claimBudget(); got != 1 {
+		t.Fatalf("claimBudget() with one free result slot = %d, want 1", got)
+	}
+}
+
+func TestEnqueueCheckResultBlocksUntilSpace(t *testing.T) {
+	w := New(nil, &config.Config{CheckConcurrency: 1})
+	for i := 0; i < resultQueueSize; i++ {
+		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: uint(i + 1)}}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		w.enqueueCheckResult(checkResult{monitor: models.MonitorURL{ID: 9999}, isUp: true})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("enqueueCheckResult returned while result queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	<-w.resultJobs
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("enqueueCheckResult did not complete after space freed")
+	}
+	if len(w.resultJobs) != resultQueueSize {
+		t.Fatalf("result queue length = %d, want %d", len(w.resultJobs), resultQueueSize)
+	}
+}
+
+func TestRetainFailedBatchDropsAfterMaxAttempts(t *testing.T) {
+	batch := []checkResult{{
+		monitor:         models.MonitorURL{ID: 1},
+		persistAttempts: maxPersistRequeues,
+	}}
+	got := retainFailedBatch(batch)
+	if len(got) != 0 {
+		t.Fatalf("len = %d, want 0 after max attempts", len(got))
+	}
+
+	batch = []checkResult{{
+		monitor:         models.MonitorURL{ID: 2},
+		persistAttempts: maxPersistRequeues - 1,
+	}}
+	got = retainFailedBatch(batch)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].persistAttempts != maxPersistRequeues {
+		t.Fatalf("persistAttempts = %d, want %d", got[0].persistAttempts, maxPersistRequeues)
+	}
+}
+
 func TestClaimLeaseDurationAtLeastProbeTimeout(t *testing.T) {
 	wantMin := urlcheck.RequestTimeout*time.Duration(claimWaveMultiplier) + 2*time.Second
 	if got := claimLeaseDuration(10); got != wantMin {

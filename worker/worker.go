@@ -20,6 +20,9 @@ const DefaultCheckConcurrency = 150
 // notifyQueueSize is the buffered capacity for async status-change alerts.
 const notifyQueueSize = 256
 
+// resultQueueSize is the buffered capacity for completed checks waiting on DB flush.
+const resultQueueSize = 2048
+
 // Stats is a point-in-time snapshot of live monitor-check and notify-queue metrics.
 type Stats struct {
 	// DueThisWave is how many claimed monitors have not finished probing yet.
@@ -34,6 +37,10 @@ type Stats struct {
 	NotifyQueued int
 	// NotifyCapacity is the notify channel buffer size.
 	NotifyCapacity int
+	// ResultQueued is how many completed checks sit in the persist channel.
+	ResultQueued int
+	// ResultCapacity is the persist channel buffer size.
+	ResultCapacity int
 }
 
 // checkResult represents the outcome of a single HTTP check that will be batched into the DB.
@@ -103,7 +110,7 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		checkSem:         make(chan struct{}, concurrency),
 		client:           urlcheck.NewClient(concurrency),
 		notifyJobs:       make(chan notifyJob, notifyQueueSize),
-		resultJobs:       make(chan checkResult, 2048),
+		resultJobs:       make(chan checkResult, resultQueueSize),
 		stop:             make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		notifyDone:       make(chan struct{}),
@@ -170,6 +177,8 @@ func (w *MonitorWorker) Stats() Stats {
 		MaxConcurrency: w.checkConcurrency,
 		NotifyQueued:   len(w.notifyJobs),
 		NotifyCapacity: notifyQueueSize,
+		ResultQueued:   len(w.resultJobs),
+		ResultCapacity: cap(w.resultJobs),
 	}
 }
 

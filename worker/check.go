@@ -51,13 +51,24 @@ func (w *MonitorWorker) claimWaveLimit() int {
 
 // claimBudget is how many additional monitors may be claimed given currently pending work.
 // It returns zero when pending claimed checks already fill the wave limit (backpressure).
+// It also limits claims to free resultJobs slots so completed probes are never dropped.
 func (w *MonitorWorker) claimBudget() int {
 	limit := w.claimWaveLimit()
 	pending := int(w.waveDue.Load())
 	if pending >= limit {
 		return 0
 	}
-	return limit - pending
+	budget := limit - pending
+
+	// Reserve persist-queue slots for probes already claimed; they will enqueue next.
+	free := cap(w.resultJobs) - len(w.resultJobs) - pending
+	if free < 1 {
+		return 0
+	}
+	if budget > free {
+		budget = free
+	}
+	return budget
 }
 
 // monitorScheduleUpdate is one claimed monitor's next scheduled check time.
@@ -194,15 +205,11 @@ func (w *MonitorWorker) dispatchChecks(monitors []models.MonitorURL, checkFn fun
 }
 
 // enqueueCheckResult puts one probe outcome onto resultJobs without holding a check slot.
-// res is the completed probe result to persist; if the queue is full the result is dropped and logged.
+// res is the completed probe result to persist.
+// The send blocks when the queue is full so results are never dropped; HTTP slots are
+// already released, and claimBudget stops new claims while the persist queue is backed up.
 func (w *MonitorWorker) enqueueCheckResult(res checkResult) {
-	select {
-	case w.resultJobs <- res:
-	default:
-		log.Error().
-			Uint("monitor_id", res.monitor.ID).
-			Msg("result queue full, dropping monitor check result")
-	}
+	w.resultJobs <- res
 }
 
 // IsMonitorDue reports whether a monitor should be checked at now based on its last check time.

@@ -116,11 +116,13 @@ func TestBuildUtilizationGauges(t *testing.T) {
 		InFlight:       4,
 		WaitingForSlot: 6,
 		MaxConcurrency: 8,
+		ResultQueued:   512,
+		ResultCapacity: 2048,
 		NotifyQueued:   2,
 		NotifyCapacity: 256,
 	})
-	if len(gauges) != 3 {
-		t.Fatalf("len = %d, want 3", len(gauges))
+	if len(gauges) != 4 {
+		t.Fatalf("len = %d, want 4", len(gauges))
 	}
 	if gauges[0].Label != "Check slots" || gauges[0].Percent != 50 || gauges[0].Detail != "4 / 8" {
 		t.Fatalf("check slots gauge = %+v", gauges[0])
@@ -128,8 +130,11 @@ func TestBuildUtilizationGauges(t *testing.T) {
 	if gauges[1].Label != "Waiting for slot" || gauges[1].Percent != 60 || gauges[1].Detail != "6 / 10" {
 		t.Fatalf("waiting gauge = %+v", gauges[1])
 	}
-	if gauges[2].Label != "Notify queue" || gauges[2].Percent != 0 || gauges[2].Detail != "2 / 256" {
-		t.Fatalf("notify gauge = %+v", gauges[2])
+	if gauges[2].Label != "Result queue" || gauges[2].Percent != 25 || gauges[2].Detail != "512 / 2048" {
+		t.Fatalf("result gauge = %+v", gauges[2])
+	}
+	if gauges[3].Label != "Notify queue" || gauges[3].Percent != 0 || gauges[3].Detail != "2 / 256" {
+		t.Fatalf("notify gauge = %+v", gauges[3])
 	}
 }
 

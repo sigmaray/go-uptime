@@ -28,52 +28,55 @@ func (w *MonitorWorker) batchResultsLoop() {
 		select {
 		case res, ok := <-w.resultJobs:
 			if !ok {
-				// The result channel was closed (worker is stopping), flush any remaining items.
-				if len(batch) > 0 {
-					w.flushBatch(batch)
+				// The result channel was closed (worker is stopping); drain leftovers locally.
+				for len(batch) > 0 {
+					batch = w.flushBatch(batch)
 				}
 				return
 			}
 			batch = append(batch, res)
 			// If we reached the batch size limit (e.g., 150), flush immediately.
 			if len(batch) >= 150 {
-				w.flushBatch(batch)
-				batch = nil
+				batch = w.flushBatch(batch)
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
-				w.flushBatch(batch)
-				batch = nil
+				batch = w.flushBatch(batch)
 			}
 		}
 	}
 }
 
-// flushBatch persists a completed result batch, retries briefly on failure, then re-queues leftovers.
+// flushBatch persists a completed result batch and retries briefly on failure.
 // batch is the set of completed checks ready to be written to PostgreSQL.
-func (w *MonitorWorker) flushBatch(batch []checkResult) {
+// It returns results that still need another flush attempt (nil/empty on success).
+// Leftovers stay in the batch loop so a full resultJobs channel cannot drop them
+// and so the batch goroutine never blocks sending into the channel it alone reads.
+func (w *MonitorWorker) flushBatch(batch []checkResult) []checkResult {
 	const maxImmediateAttempts = 3
 
 	var err error
 	for attempt := 1; attempt <= maxImmediateAttempts; attempt++ {
 		err = w.processBatch(batch)
 		if err == nil {
-			return
+			return nil
 		}
 		log.Error().Err(err).Int("attempt", attempt).Msg("failed to process monitor checks batch")
 		if attempt < maxImmediateAttempts {
 			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
 		}
 	}
-	w.requeueFailedBatch(batch)
+	return retainFailedBatch(batch)
 }
 
-// maxPersistRequeues caps how many times a single check result may be put back on resultJobs.
+// maxPersistRequeues caps how many times a single check result may be retried after failed flushes.
 const maxPersistRequeues = 5
 
-// requeueFailedBatch puts failed results back onto resultJobs so a later flush can retry them.
+// retainFailedBatch increments persist attempts and keeps results that may still be retried.
 // batch is the set that exhausted immediate flush retries.
-func (w *MonitorWorker) requeueFailedBatch(batch []checkResult) {
+// Results that exceeded maxPersistRequeues are logged and discarded.
+func retainFailedBatch(batch []checkResult) []checkResult {
+	out := make([]checkResult, 0, len(batch))
 	for _, res := range batch {
 		res.persistAttempts++
 		if res.persistAttempts > maxPersistRequeues {
@@ -83,14 +86,9 @@ func (w *MonitorWorker) requeueFailedBatch(batch []checkResult) {
 				Msg("dropping monitor check result after persist retries")
 			continue
 		}
-		select {
-		case w.resultJobs <- res:
-		default:
-			log.Error().
-				Uint("monitor_id", res.monitor.ID).
-				Msg("result queue full, dropping monitor check result")
-		}
+		out = append(out, res)
 	}
+	return out
 }
 
 // monitorStatusUpdate holds one monitor row's fields written after a completed probe.

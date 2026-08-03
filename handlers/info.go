@@ -231,6 +231,7 @@ func buildUtilizationGauges(stats worker.Stats) []utilizationGauge {
 	return []utilizationGauge{
 		newUtilizationGauge("Check slots", stats.InFlight, stats.MaxConcurrency),
 		newUtilizationGauge("Waiting for slot", stats.WaitingForSlot, waitingMax),
+		newUtilizationGauge("Result queue", stats.ResultQueued, stats.ResultCapacity),
 		newUtilizationGauge("Notify queue", stats.NotifyQueued, stats.NotifyCapacity),
 	}
 }

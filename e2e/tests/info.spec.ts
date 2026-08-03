@@ -39,6 +39,7 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-check-concurrency')).not.toHaveText('');
     await expect(page.getByTestId('info-most-overdue-empty')).toBeVisible();
     await expect(page.getByTestId('info-worker-stats')).toBeVisible();
+    await expect(page.getByTestId('info-result-queue')).toContainText('/');
     await expect(page.getByTestId('info-notify-queue')).toContainText('/');
     await expect(page.getByTestId('info-utilization-gauges')).toBeVisible();
     await expect(page.getByTestId('info-fleet-empty')).toBeVisible();

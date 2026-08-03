@@ -163,7 +163,7 @@
 <div class="card mb-4">
     <div class="card-body">
         <h3 class="h5">Live check wave</h3>
-        <p class="text-muted">Current worker wave progress and notification queue depth.</p>
+        <p class="text-muted">Current worker wave progress and persist/notification queue depth.</p>
         <div class="table-responsive">
             <table class="table table-sm mb-0" data-testid="info-worker-stats">
                 <tbody>
@@ -182,6 +182,10 @@
                     <tr>
                         <th scope="row">Max concurrency</th>
                         <td>{{ .WorkerStats.MaxConcurrency }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Result queue</th>
+                        <td data-testid="info-result-queue">{{ .WorkerStats.ResultQueued }} / {{ .WorkerStats.ResultCapacity }}</td>
                     </tr>
                     <tr>
                         <th scope="row">Notify queue</th>
