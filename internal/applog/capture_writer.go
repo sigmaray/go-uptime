@@ -77,12 +77,30 @@ func parseZerologLine(line []byte) {
 		}
 	}
 
-	addLogEntry(Entry{
+	entry := Entry{
 		Time:    entryTime,
 		Level:   level,
 		Message: message,
 		Fields:  fieldsJSON,
-	})
+	}
+	addLogEntry(entry)
+
+	// Mirror warn+ entries into the admin errors buffer with full structured fields
+	// so production failures (error message, monitor_id, path, etc.) are investigable.
+	if isCapturedErrorLevel(level) {
+		addErrorEntry(entry)
+	}
+}
+
+// isCapturedErrorLevel reports whether a zerolog level should appear on /admin/errors.
+// level is the zerolog level string from a JSON log line (for example "warn" or "error").
+func isCapturedErrorLevel(level string) bool {
+	switch level {
+	case "warn", "error", "fatal", "panic":
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeStringField(raw json.RawMessage) string {

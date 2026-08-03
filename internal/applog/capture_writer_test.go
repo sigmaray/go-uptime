@@ -57,6 +57,42 @@ func TestCaptureWriterBuffersPartialLines(t *testing.T) {
 	if entries[0].Level != "warn" {
 		t.Fatalf("level = %q, want warn", entries[0].Level)
 	}
+
+	errors := RecentErrors()
+	if len(errors) != 1 {
+		t.Fatalf("RecentErrors() len = %d, want 1 for warn", len(errors))
+	}
+}
+
+func TestCaptureWriterMirrorsWarnAndErrorIntoRecentErrors(t *testing.T) {
+	resetForTest()
+
+	writer := NewCaptureWriter()
+	line := `{"level":"error","time":1700000002,"message":"failed to send monitor notification","error":"smtp dial timeout","monitor_id":42}` + "\n"
+	if _, err := writer.Write([]byte(line)); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if _, err := writer.Write([]byte(`{"level":"info","time":1700000003,"message":"ok"}` + "\n")); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	errors := RecentErrors()
+	if len(errors) != 1 {
+		t.Fatalf("RecentErrors() len = %d, want 1", len(errors))
+	}
+	entry := errors[0]
+	if entry.Message != "failed to send monitor notification" {
+		t.Fatalf("message = %q", entry.Message)
+	}
+	if entry.Level != "error" {
+		t.Fatalf("level = %q, want error", entry.Level)
+	}
+	if !strings.Contains(entry.Fields, `"error":"smtp dial timeout"`) {
+		t.Fatalf("fields = %q, want error detail", entry.Fields)
+	}
+	if !strings.Contains(entry.Fields, `"monitor_id":42`) {
+		t.Fatalf("fields = %q, want monitor_id", entry.Fields)
+	}
 }
 
 func TestCaptureWriterUsesCurrentTimeWhenMissing(t *testing.T) {

@@ -72,16 +72,24 @@ func AddEvent(category, message string) {
 	})
 }
 
-// AddError appends an error record to the ring buffer.
+// AddError appends an error-level record to the ring buffer.
+// message is the human-readable summary; fields is optional structured context
+// (JSON or plain text) shown on the admin errors page for investigation.
 func AddError(message, fields string) {
-	errorMu.Lock()
-	defer errorMu.Unlock()
-	appErrors = appendRing(appErrors, Entry{
+	addErrorEntry(Entry{
 		Time:    time.Now(),
 		Level:   "error",
 		Message: message,
 		Fields:  fields,
 	})
+}
+
+// addErrorEntry appends one error/warn record to the in-memory errors ring buffer.
+// entry is the fully populated log record to store for the admin errors page.
+func addErrorEntry(entry Entry) {
+	errorMu.Lock()
+	defer errorMu.Unlock()
+	appErrors = appendRing(appErrors, entry)
 }
 
 // RecentLogs returns the most recent log entries (at most maxEntries), newest first.

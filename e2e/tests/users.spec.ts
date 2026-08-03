@@ -497,5 +497,6 @@ test.describe('Dev tools', () => {
 
     await page.goto('/admin/errors');
     await expect(page.getByText('test error from dev tools')).toBeVisible();
+    await expect(page.getByText('manual trigger')).toBeVisible();
   });
 });

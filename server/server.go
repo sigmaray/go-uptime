@@ -179,15 +179,7 @@ func setupLogger(level string) {
 	capture := applog.NewCaptureWriter()
 	log.Logger = zerolog.New(
 		zerolog.MultiLevelWriter(os.Stderr, capture),
-	).Level(l).With().Timestamp().Logger().Hook(applogHook{})
-}
-
-type applogHook struct{}
-
-func (applogHook) Run(_ *zerolog.Event, level zerolog.Level, msg string) {
-	if level >= zerolog.WarnLevel {
-		applog.AddError(msg, level.String())
-	}
+	).Level(l).With().Timestamp().Logger()
 }
 
 func loadHTMLTemplates(r *gin.Engine) *template.Template {

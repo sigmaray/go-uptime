@@ -4,17 +4,32 @@
 <div class="table-responsive">
     <table class="table table-sm table-striped log-table">
         <thead>
-            <tr><th>Time</th><th>Message</th><th>Context</th></tr>
+            <tr><th>Time</th><th>Level</th><th>Message</th><th>Context</th></tr>
         </thead>
         <tbody>
             {{ range .Entries }}
             <tr>
                 <td class="text-nowrap">{{ .Time.Format "2006-01-02 15:04:05" }}</td>
+                <td>
+                    {{ if eq .Level "error" "fatal" "panic" }}
+                    <span class="badge text-bg-danger">{{ .Level }}</span>
+                    {{ else if eq .Level "warn" }}
+                    <span class="badge text-bg-warning text-dark">{{ .Level }}</span>
+                    {{ else }}
+                    <span class="badge text-bg-secondary">{{ .Level }}</span>
+                    {{ end }}
+                </td>
                 <td>{{ .Message }}</td>
-                <td class="small text-muted">{{ .Fields }}</td>
+                <td class="small">
+                    {{ if .Fields }}
+                    <code class="log-table__fields">{{ .Fields }}</code>
+                    {{ else }}
+                    <span class="text-muted">—</span>
+                    {{ end }}
+                </td>
             </tr>
             {{ else }}
-            <tr><td colspan="3" class="text-muted">No errors recorded.</td></tr>
+            <tr><td colspan="4" class="text-muted">No errors recorded.</td></tr>
             {{ end }}
         </tbody>
     </table>
