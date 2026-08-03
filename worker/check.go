@@ -51,7 +51,8 @@ func (w *MonitorWorker) claimWaveLimit() int {
 
 // claimBudget is how many additional monitors may be claimed given currently pending work.
 // It returns zero when pending claimed checks already fill the wave limit (backpressure).
-// It also limits claims to free resultJobs slots so completed probes are never dropped.
+// It also limits claims to free persist capacity so completed probes are never dropped
+// while the result channel or in-memory flush leftovers are backed up.
 func (w *MonitorWorker) claimBudget() int {
 	limit := w.claimWaveLimit()
 	pending := int(w.waveDue.Load())
@@ -60,8 +61,9 @@ func (w *MonitorWorker) claimBudget() int {
 	}
 	budget := limit - pending
 
-	// Reserve persist-queue slots for probes already claimed; they will enqueue next.
-	free := cap(w.resultJobs) - len(w.resultJobs) - pending
+	// Reserve persist capacity for probes already claimed and for flush leftovers
+	// held in the batch loop (those no longer sit on resultJobs).
+	free := cap(w.resultJobs) - len(w.resultJobs) - int(w.persistBacklog.Load()) - pending
 	if free < 1 {
 		return 0
 	}

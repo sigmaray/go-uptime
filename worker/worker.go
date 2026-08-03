@@ -37,7 +37,7 @@ type Stats struct {
 	NotifyQueued int
 	// NotifyCapacity is the notify channel buffer size.
 	NotifyCapacity int
-	// ResultQueued is how many completed checks sit in the persist channel.
+	// ResultQueued is completed checks waiting to persist (channel plus in-memory batch leftovers).
 	ResultQueued int
 	// ResultCapacity is the persist channel buffer size.
 	ResultCapacity int
@@ -92,6 +92,8 @@ type MonitorWorker struct {
 	waveStarted atomic.Int64
 	// inFlight counts HTTP checks currently executing.
 	inFlight atomic.Int64
+	// persistBacklog is how many completed checks sit in the batch loop awaiting a successful DB flush.
+	persistBacklog atomic.Int64
 }
 
 // New creates a new background monitoring worker instance.
@@ -156,7 +158,7 @@ func (w *MonitorWorker) Paused() bool {
 	return w != nil && w.paused.Load()
 }
 
-// Stats returns live check-wave and notification-queue counters for ops pages.
+// Stats returns live check-wave, persist-queue, and notification-queue counters for ops pages.
 func (w *MonitorWorker) Stats() Stats {
 	if w == nil {
 		return Stats{}
@@ -177,7 +179,7 @@ func (w *MonitorWorker) Stats() Stats {
 		MaxConcurrency: w.checkConcurrency,
 		NotifyQueued:   len(w.notifyJobs),
 		NotifyCapacity: notifyQueueSize,
-		ResultQueued:   len(w.resultJobs),
+		ResultQueued:   len(w.resultJobs) + int(w.persistBacklog.Load()),
 		ResultCapacity: cap(w.resultJobs),
 	}
 }

@@ -255,8 +255,8 @@ func TestClaimBudgetBackpressure(t *testing.T) {
 func TestClaimBudgetResultQueueBackpressure(t *testing.T) {
 	w := New(nil, &config.Config{CheckConcurrency: 2})
 
-	for i := 0; i < resultQueueSize; i++ {
-		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: uint(i + 1)}}
+	for i := uint(1); i <= uint(resultQueueSize); i++ {
+		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: i}}
 	}
 	if got := w.claimBudget(); got != 0 {
 		t.Fatalf("claimBudget() with full result queue = %d, want 0", got)
@@ -269,10 +269,23 @@ func TestClaimBudgetResultQueueBackpressure(t *testing.T) {
 	}
 }
 
+func TestClaimBudgetPersistBacklogBackpressure(t *testing.T) {
+	w := New(nil, &config.Config{CheckConcurrency: 2})
+	w.persistBacklog.Store(int64(resultQueueSize))
+	if got := w.claimBudget(); got != 0 {
+		t.Fatalf("claimBudget() with full persist backlog = %d, want 0", got)
+	}
+
+	w.persistBacklog.Store(int64(resultQueueSize - 1))
+	if got := w.claimBudget(); got != 1 {
+		t.Fatalf("claimBudget() with one free persist slot = %d, want 1", got)
+	}
+}
+
 func TestEnqueueCheckResultBlocksUntilSpace(t *testing.T) {
 	w := New(nil, &config.Config{CheckConcurrency: 1})
-	for i := 0; i < resultQueueSize; i++ {
-		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: uint(i + 1)}}
+	for i := uint(1); i <= uint(resultQueueSize); i++ {
+		w.resultJobs <- checkResult{monitor: models.MonitorURL{ID: i}}
 	}
 
 	done := make(chan struct{})

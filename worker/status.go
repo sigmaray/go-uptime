@@ -31,17 +31,21 @@ func (w *MonitorWorker) batchResultsLoop() {
 				// The result channel was closed (worker is stopping); drain leftovers locally.
 				for len(batch) > 0 {
 					batch = w.flushBatch(batch)
+					w.persistBacklog.Store(int64(len(batch)))
 				}
 				return
 			}
 			batch = append(batch, res)
+			w.persistBacklog.Store(int64(len(batch)))
 			// If we reached the batch size limit (e.g., 150), flush immediately.
 			if len(batch) >= 150 {
 				batch = w.flushBatch(batch)
+				w.persistBacklog.Store(int64(len(batch)))
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
 				batch = w.flushBatch(batch)
+				w.persistBacklog.Store(int64(len(batch)))
 			}
 		}
 	}
