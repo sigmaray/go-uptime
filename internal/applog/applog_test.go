@@ -1,9 +1,52 @@
 package applog
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
+
+func TestEncodeFields(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "object json", in: `{"code":1}`, want: `{"code":1}`},
+		{name: "plain text", in: `manual trigger`, want: `"manual trigger"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EncodeFields(tt.in)
+			if string(got) != tt.want {
+				t.Fatalf("EncodeFields(%q) = %s, want %s", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddErrorFieldsEmbedAsJSON(t *testing.T) {
+	resetForTest()
+	AddError("boom", `{"monitor_id":7}`)
+
+	raw, err := json.Marshal(RecentErrors()[0])
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	fields, ok := parsed["fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("fields is %T, want object; raw=%s", parsed["fields"], raw)
+	}
+	if fields["monitor_id"] != float64(7) {
+		t.Fatalf("monitor_id = %#v, want 7", fields["monitor_id"])
+	}
+}
 
 func TestRecentLogsNewestFirst(t *testing.T) {
 	resetForTest()

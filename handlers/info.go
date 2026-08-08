@@ -115,12 +115,14 @@ type heartbeatHourChartPayload struct {
 	Failed []int `json:"failed"`
 }
 
-// tableRowCount is one PostgreSQL application table with its current row count.
+// tableRowCount is one PostgreSQL application table with its current row count and disk size.
 type tableRowCount struct {
 	// Name is the PostgreSQL table name (for example "monitor_urls").
 	Name string
 	// Count is the number of rows currently stored in the table.
 	Count int64
+	// TotalBytes is pg_total_relation_size for the table (including indexes).
+	TotalBytes int64
 }
 
 // applicationTableModels lists every GORM model whose PostgreSQL table the app uses.
@@ -191,6 +193,49 @@ func (h *Handler) InfoPage(c *gin.Context) {
 		workerStats = h.Worker.Stats()
 	}
 
+	incidentTotal, err := models.CountIncidents(h.DB)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to count incidents for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load incident counts.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
+	incidentOpen, err := models.CountOpenIncidents(h.DB)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to count open incidents for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load incident counts.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
+
+	environment := ""
+	if h.Config != nil {
+		environment = h.Config.Environment
+	}
+	fleetComposition := buildFleetComposition(monitors)
+	diagnostics := buildInfoDiagnostics(
+		now,
+		environment,
+		h.Worker,
+		workerStats,
+		backlog,
+		fleetComposition,
+		heartbeatChart,
+		incidentTotal,
+		incidentOpen,
+		tableCounts,
+	)
+	diagnosticsJSON, err := marshalInfoDiagnosticsJSON(diagnostics)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to encode diagnostics JSON for info page")
+		h.renderPage(c, http.StatusInternalServerError, "admin/info/index.html", gin.H{
+			"Error": "Failed to load diagnostics JSON.",
+		}, PageOptions{Title: "Info", ActiveNav: "info"})
+		return
+	}
+
 	h.renderPage(c, http.StatusOK, "admin/info/index.html", gin.H{
 		"TotalMonitors":          backlog.Total,
 		"DueWaiting":             backlog.DueWaiting,
@@ -199,16 +244,17 @@ func (h *Handler) InfoPage(c *gin.Context) {
 		"MostOverdue":            backlog.MostOverdue,
 		"WorkerStats":            workerStats,
 		"UtilizationGauges":      buildUtilizationGauges(workerStats),
-		"FleetComposition":       buildFleetComposition(monitors),
+		"FleetComposition":       fleetComposition,
 		"BacklogComposition":     buildBacklogComposition(backlog),
 		"HeartbeatHourChart":     heartbeatChart,
 		"HeartbeatHourChartJSON": chartJSON,
 		"TableCounts":            tableCounts,
+		"DiagnosticsJSON":        diagnosticsJSON,
 	}, PageOptions{Title: "Info", ActiveNav: "info"})
 }
 
-// loadTableRowCounts returns the current row count for each application table.
-// db is the GORM handle used to run COUNT queries against PostgreSQL.
+// loadTableRowCounts returns the current row count and disk size for each application table.
+// db is the GORM handle used to run COUNT and pg_total_relation_size queries against PostgreSQL.
 func loadTableRowCounts(db *gorm.DB) ([]tableRowCount, error) {
 	counts := make([]tableRowCount, 0, len(applicationTableModels))
 	for _, entry := range applicationTableModels {
@@ -216,7 +262,15 @@ func loadTableRowCounts(db *gorm.DB) ([]tableRowCount, error) {
 		if err := db.Model(entry.model).Count(&count).Error; err != nil {
 			return nil, fmt.Errorf("count rows in %s: %w", entry.name, err)
 		}
-		counts = append(counts, tableRowCount{Name: entry.name, Count: count})
+		var totalBytes int64
+		// Table names come from the hardcoded applicationTableModels whitelist.
+		if err := db.Raw(
+			"SELECT pg_total_relation_size(?::regclass)",
+			"public."+entry.name,
+		).Scan(&totalBytes).Error; err != nil {
+			return nil, fmt.Errorf("relation size for %s: %w", entry.name, err)
+		}
+		counts = append(counts, tableRowCount{Name: entry.name, Count: count, TotalBytes: totalBytes})
 	}
 	return counts, nil
 }

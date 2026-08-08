@@ -27,8 +27,8 @@ func TestCaptureWriterParsesZerologLine(t *testing.T) {
 	if entry.Message != "starting server" {
 		t.Fatalf("message = %q, want starting server", entry.Message)
 	}
-	if !strings.Contains(entry.Fields, `"port":"8080"`) {
-		t.Fatalf("fields = %q, want port field", entry.Fields)
+	if !strings.Contains(string(entry.Fields), `"port":"8080"`) {
+		t.Fatalf("fields = %s, want port field", entry.Fields)
 	}
 	if entry.Time.Unix() != 1700000000 {
 		t.Fatalf("time = %v, want unix 1700000000", entry.Time)
@@ -87,11 +87,11 @@ func TestCaptureWriterMirrorsWarnAndErrorIntoRecentErrors(t *testing.T) {
 	if entry.Level != "error" {
 		t.Fatalf("level = %q, want error", entry.Level)
 	}
-	if !strings.Contains(entry.Fields, `"error":"smtp dial timeout"`) {
-		t.Fatalf("fields = %q, want error detail", entry.Fields)
+	if !strings.Contains(string(entry.Fields), `"error":"smtp dial timeout"`) {
+		t.Fatalf("fields = %s, want error detail", entry.Fields)
 	}
-	if !strings.Contains(entry.Fields, `"monitor_id":42`) {
-		t.Fatalf("fields = %q, want monitor_id", entry.Fields)
+	if !strings.Contains(string(entry.Fields), `"monitor_id":42`) {
+		t.Fatalf("fields = %s, want monitor_id", entry.Fields)
 	}
 }
 

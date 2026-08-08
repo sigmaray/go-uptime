@@ -197,7 +197,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card mb-4">
     <div class="card-body">
         <h3 class="h5">Database tables</h3>
         <p class="text-muted">Row counts for PostgreSQL tables used by the application.</p>
@@ -221,4 +221,23 @@
         </div>
     </div>
 </div>
+
+<div class="card" data-testid="info-diagnostics" data-info-diagnostics>
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+            <div>
+                <h3 class="h5 mb-1">Diagnostics JSON</h3>
+                <p class="text-muted small mb-0">Snapshot for analysis in Cursor: errors, monitoring, queues, and table sizes.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-info-diagnostics-copy data-testid="info-diagnostics-copy">
+                    Copy JSON
+                </button>
+                <span class="small text-muted" data-info-diagnostics-copy-status data-testid="info-diagnostics-copy-status" aria-live="polite"></span>
+            </div>
+        </div>
+        <pre class="info-diagnostics__json mb-0" data-info-diagnostics-json data-testid="info-diagnostics-json">{{ .DiagnosticsJSON }}</pre>
+    </div>
+</div>
+<script src="/static/js/info-diagnostics-copy.js"></script>
 {{ end }}

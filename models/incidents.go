@@ -8,9 +8,18 @@ import (
 )
 
 // CountIncidents returns the total number of incidents across all monitors.
+// db is the GORM handle used to count incident rows.
 func CountIncidents(db *gorm.DB) (int64, error) {
 	var count int64
 	err := db.Model(&Incident{}).Count(&count).Error
+	return count, err
+}
+
+// CountOpenIncidents returns how many incidents are still unresolved.
+// db is the GORM handle used to count open incident rows.
+func CountOpenIncidents(db *gorm.DB) (int64, error) {
+	var count int64
+	err := db.Model(&Incident{}).Where("resolved_at IS NULL").Count(&count).Error
 	return count, err
 }
 

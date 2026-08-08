@@ -63,6 +63,32 @@ test.describe('Admin info', () => {
     await expect(page.getByTestId('info-table-count-stat_minutely')).toBeVisible();
     await expect(page.getByTestId('info-table-count-stat_hourly')).toBeVisible();
     await expect(page.getByTestId('info-table-count-stat_daily')).toBeVisible();
+
+    await expect(page.getByTestId('info-diagnostics')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Diagnostics JSON' })).toBeVisible();
+    const diagnosticsText = await page.getByTestId('info-diagnostics-json').innerText();
+    const diagnostics = JSON.parse(diagnosticsText);
+    expect(diagnostics).toHaveProperty('worker');
+    expect(diagnostics).toHaveProperty('monitors');
+    expect(diagnostics).toHaveProperty('heartbeats_past_hour');
+    expect(diagnostics).toHaveProperty('incidents');
+    expect(diagnostics).toHaveProperty('applog');
+    expect(diagnostics).toHaveProperty('tables');
+    expect(Array.isArray(diagnostics.tables)).toBeTruthy();
+    expect(diagnostics.monitors.total).toBe(0);
+  });
+
+  test('copies diagnostics JSON to the clipboard', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/admin/info');
+
+    const expected = await page.getByTestId('info-diagnostics-json').innerText();
+    await page.getByTestId('info-diagnostics-copy').click();
+    await expect(page.getByTestId('info-diagnostics-copy-status')).toHaveText('Copied');
+
+    const clipboardText = await page.evaluate(async () => navigator.clipboard.readText());
+    expect(clipboardText).toBe(expected);
+    expect(JSON.parse(clipboardText)).toHaveProperty('applog');
   });
 
   test('counts seeded monitors on the info page', async ({ page, request }) => {

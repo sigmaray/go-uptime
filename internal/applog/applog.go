@@ -2,6 +2,7 @@
 package applog
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -13,7 +14,8 @@ type Entry struct {
 	Time    time.Time `json:"time"`
 	Level   string    `json:"level"`
 	Message string    `json:"message"`
-	Fields  string    `json:"fields"`
+	// Fields is optional structured context embedded as JSON (object, array, or scalar).
+	Fields json.RawMessage `json:"fields,omitempty"`
 }
 
 // EventEntry is an application event (not an HTTP request).
@@ -46,12 +48,14 @@ var (
 )
 
 // AddLog appends a log entry to the in-memory ring buffer.
+// level is the log severity; message is the human-readable summary.
+// fields is optional context: valid JSON is stored as-is, plain text becomes a JSON string.
 func AddLog(level, message, fields string) {
 	addLogEntry(Entry{
 		Time:    time.Now(),
 		Level:   level,
 		Message: message,
-		Fields:  fields,
+		Fields:  EncodeFields(fields),
 	})
 }
 
@@ -74,14 +78,31 @@ func AddEvent(category, message string) {
 
 // AddError appends an error-level record to the ring buffer.
 // message is the human-readable summary; fields is optional structured context
-// (JSON or plain text) shown on the admin errors page for investigation.
+// (valid JSON or plain text) shown on the admin errors page for investigation.
 func AddError(message, fields string) {
 	addErrorEntry(Entry{
 		Time:    time.Now(),
 		Level:   "error",
 		Message: message,
-		Fields:  fields,
+		Fields:  EncodeFields(fields),
 	})
+}
+
+// EncodeFields converts optional context into JSON suitable for Entry.Fields.
+// raw is either valid JSON (object/array/scalar) or plain text; plain text is
+// wrapped as a JSON string so diagnostics can embed fields without escaping.
+func EncodeFields(raw string) json.RawMessage {
+	if raw == "" {
+		return nil
+	}
+	if json.Valid([]byte(raw)) {
+		return json.RawMessage(raw)
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 // addErrorEntry appends one error/warn record to the in-memory errors ring buffer.
@@ -249,9 +270,16 @@ func appendRing[T any](buf []T, entry T) []T {
 	return buf
 }
 
+// copyEntries returns a deep copy of log/error entries so callers can mutate safely.
+// buf is the ring-buffer slice to clone; Fields byte slices are copied independently.
 func copyEntries(buf []Entry) []Entry {
 	out := make([]Entry, len(buf))
-	copy(out, buf)
+	for i := range buf {
+		out[i] = buf[i]
+		if len(buf[i].Fields) > 0 {
+			out[i].Fields = append(json.RawMessage(nil), buf[i].Fields...)
+		}
+	}
 	return out
 }
 

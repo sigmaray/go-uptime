@@ -69,11 +69,11 @@ func parseZerologLine(line []byte) {
 		extra[key] = value
 	}
 
-	fieldsJSON := ""
+	var fieldsJSON json.RawMessage
 	if len(extra) > 0 {
 		encoded, err := json.Marshal(extra)
 		if err == nil {
-			fieldsJSON = string(encoded)
+			fieldsJSON = encoded
 		}
 	}
 
