@@ -211,4 +211,64 @@ test.describe('Monitors list filter and search', () => {
       /status=down/,
     );
   });
+
+  test('returns to filtered list after editing a monitor', async ({ page, request }) => {
+    await login(page, request);
+    await clearMonitors(request);
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_urls (url, name, is_up, last_checked_at, created_at, updated_at) VALUES
+              ('https://bravo.example.com', 'Bravo', false, NOW(), NOW() - INTERVAL '3 minutes', NOW()),
+              ('https://alpha.example.com', 'Alpha', false, NOW(), NOW() - INTERVAL '2 minutes', NOW()),
+              ('https://charlie.example.com', 'Charlie', true, NOW(), NOW() - INTERVAL '1 minute', NOW())`,
+    });
+
+    await page.goto('/admin/monitors');
+    await page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' }).click();
+    await page.getByRole('link', { name: 'Sort by URL ascending' }).click();
+    await expect(page).toHaveURL(/status=down/);
+    await expect(page).toHaveURL(/sort=URL/);
+    await expect(page).toHaveURL(/order=asc/);
+
+    await page.getByRole('row', { name: /alpha\.example\.com/ }).getByRole('link', { name: 'Edit' }).click();
+    await expect(page).toHaveURL(/return_to=/);
+    await page.locator('#name').fill('Alpha Renamed');
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    await expect(page).toHaveURL(/\/admin\/monitors\?/);
+    await expect(page).toHaveURL(/status=down/);
+    await expect(page).toHaveURL(/sort=URL/);
+    await expect(page).toHaveURL(/order=asc/);
+    await expect(page.getByText('Saved successfully.')).toBeVisible();
+    await expect(page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  test('returns to filtered list after deleting a monitor', async ({ page, request }) => {
+    await login(page, request);
+    await clearMonitors(request);
+    await apiCall(request, 'sql', {
+      query: `INSERT INTO monitor_urls (url, name, is_up, last_checked_at, created_at, updated_at) VALUES
+              ('https://keep.example.com', 'Keep', false, NOW(), NOW() - INTERVAL '2 minutes', NOW()),
+              ('https://remove.example.com', 'Remove', false, NOW(), NOW() - INTERVAL '1 minute', NOW()),
+              ('https://up.example.com', 'Up', true, NOW(), NOW(), NOW())`,
+    });
+
+    await page.goto('/admin/monitors');
+    await page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' }).click();
+    await page.getByRole('link', { name: 'Sort by URL ascending' }).click();
+    await expect(page).toHaveURL(/status=down/);
+    await expect(page).toHaveURL(/sort=URL/);
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('row', { name: /remove\.example\.com/ }).getByRole('button', { name: 'Delete' }).click();
+
+    await expect(page).toHaveURL(/\/admin\/monitors\?/);
+    await expect(page).toHaveURL(/status=down/);
+    await expect(page).toHaveURL(/sort=URL/);
+    await expect(page).toHaveURL(/order=asc/);
+    await expect(page.getByText('Deleted successfully.')).toBeVisible();
+    await expect(await monitorURLs(page)).toEqual(['https://keep.example.com']);
+  });
 });

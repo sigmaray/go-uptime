@@ -93,6 +93,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		"Pagination": pagination,
 		"Sort":       sort,
 		"Filter":     filter,
+		"ReturnTo":   sort.PageURL(page),
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 
@@ -429,7 +430,10 @@ func (h *Handler) EditMonitorPage(c *gin.Context) {
 		}
 	}
 
-	data := gin.H{"Monitor": monitor}
+	data := gin.H{
+		"Monitor":  monitor,
+		"ReturnTo": monitorsListReturnURL(c),
+	}
 	for key, value := range notifyData {
 		data[key] = value
 	}
@@ -447,6 +451,8 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		return
 	}
 
+	returnTo := monitorsListReturnURL(c)
+
 	var monitor models.MonitorURL
 	if err := h.DB.First(&monitor, id).Error; err != nil {
 		c.Status(http.StatusNotFound)
@@ -459,6 +465,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
 			"Error":              "Invalid form data",
 			"Monitor":            monitor,
+			"ReturnTo":           returnTo,
 			"NotifyTelegram":     monitor.NotifyTelegram,
 			"NotifySMTP":         monitor.NotifySMTP,
 			"TelegramConfigured": notifyData["TelegramConfigured"],
@@ -480,6 +487,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/edit.html", gin.H{
 			"Error":              forms.FormatValidationError(err),
 			"Monitor":            monitor,
+			"ReturnTo":           returnTo,
 			"NotifyTelegram":     input.NotifyTelegram,
 			"NotifySMTP":         input.NotifySMTP,
 			"TelegramConfigured": notifyData["TelegramConfigured"],
@@ -506,6 +514,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		h.renderPage(c, status, "admin/monitors/edit.html", gin.H{
 			"Error":              errMsg,
 			"Monitor":            monitor,
+			"ReturnTo":           returnTo,
 			"NotifyTelegram":     input.NotifyTelegram,
 			"NotifySMTP":         input.NotifySMTP,
 			"TelegramConfigured": notifyData["TelegramConfigured"],
@@ -515,7 +524,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Updated monitor %q (%s)", monitor.Name, monitor.URL))
-	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
+	redirectWithFlash(c, returnTo, flashSavedMessage)
 }
 
 // DeleteMonitor permanently removes a monitored URL and cascaded related rows.
@@ -526,6 +535,8 @@ func (h *Handler) DeleteMonitor(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
+
+	returnTo := monitorsListReturnURL(c)
 
 	var monitor models.MonitorURL
 	if err := h.DB.First(&monitor, id).Error; err != nil {
@@ -539,5 +550,5 @@ func (h *Handler) DeleteMonitor(c *gin.Context) {
 	}
 
 	applog.AddEvent("monitor", fmt.Sprintf("Deleted monitor %q (%s)", models.MonitorDisplayName(monitor), monitor.URL))
-	redirectWithFlash(c, "/admin/monitors", flashDeletedMessage)
+	redirectWithFlash(c, returnTo, flashDeletedMessage)
 }

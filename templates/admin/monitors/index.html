@@ -121,8 +121,9 @@
                 <td>{{ if .LastCheckedAt }}{{ .LastCheckedAt.Format "2006-01-02 15:04:05" }}{{ else }}—{{ end }}</td>
                 <td class="small text-danger">{{ .LastError }}</td>
                 <td class="text-end">
-                    <a href="/admin/monitors/{{ .ID }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <a href="/admin/monitors/{{ .ID }}/edit?return_to={{ urlquery $.ReturnTo }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                     <form action="/admin/monitors/{{ .ID }}/delete" method="POST" class="d-inline" data-confirm-delete="Delete this monitor?">
+                        <input type="hidden" name="return_to" value="{{ $.ReturnTo }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                     </form>
                 </td>
