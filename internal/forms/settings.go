@@ -1,6 +1,6 @@
 package forms
 
-// SettingsInput holds monitoring settings form data.
+// SettingsInput хранит данные формы настроек мониторинга.
 type SettingsInput struct {
 	CheckIntervalSeconds int    `form:"check_interval_seconds" validate:"required,min=10,max=86400" label:"check interval"`
 	TelegramURL          string `form:"notification_telegram_url" validate:"omitempty,telegram_shoutrrr_url" label:"telegram URL"`
@@ -12,7 +12,8 @@ type SettingsInput struct {
 	SMTPTo               string `form:"notification_smtp_to" validate:"omitempty,email" label:"smtp to"`
 }
 
-// Validate checks SettingsInput against structural validation rules.
+// Validate проверяет SettingsInput по правилам структурной валидации.
 func (input SettingsInput) Validate() error {
+	// Структурные правила: интервал 10–86400, email-поля SMTP, telegram_shoutrrr_url.
 	return validate.Struct(input)
 }

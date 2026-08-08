@@ -1,5 +1,8 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
 
+// E2e-тесты сортировки списка heartbeats: колонки, порядок, сохранение sort при пагинации.
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown> = {}) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +10,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -19,16 +23,19 @@ async function login(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
+/** Имена мониторов из колонки Monitor (только текст узла, без вложенных ссылок). */
 async function heartbeatMonitorNames(page: Page): Promise<string[]> {
   return page.locator('.heartbeats-table tbody tr td:nth-child(2)').evaluateAll((cells) =>
     cells.map((cell) => (cell.childNodes[0]?.textContent ?? '').trim()),
   );
 }
 
+/** Статусы Up/Down из badge в колонке Status. */
 async function heartbeatStatuses(page: Page): Promise<string[]> {
   return page.locator('.heartbeats-table tbody tr td:nth-child(5) .badge').allTextContents();
 }
 
+/** Response time из колонки Response Time. */
 async function heartbeatResponseTimes(page: Page): Promise<string[]> {
   return page.locator('.heartbeats-table tbody tr td:nth-child(4)').allTextContents();
 }
@@ -49,6 +56,7 @@ test.describe('Heartbeats list sorting', () => {
 
     await page.goto('/admin/heartbeats');
 
+    // Все колонки таблицы heartbeats поддерживают сортировку asc/desc.
     await expect(page.getByRole('link', { name: 'Sort by Monitor ascending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by Monitor descending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by Checked At ascending' })).toBeVisible();
@@ -140,6 +148,7 @@ test.describe('Heartbeats list sorting', () => {
       query: `INSERT INTO monitor_urls (url, name, created_at, updated_at)
               VALUES ('https://hb-pagination-sort.example.com', 'HB Pagination Sort', NOW(), NOW())`,
     });
+    // 101 heartbeat с response_time_ms = n — сортировка по ResponseTimeMs детерминирована.
     await apiCall(request, 'sql', {
       query: `INSERT INTO monitor_checks (monitor_url_id, checked_at, is_up, response_time_ms)
               SELECT m.id, NOW() - (n || ' seconds')::interval, true, n

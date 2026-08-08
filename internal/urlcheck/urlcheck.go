@@ -1,4 +1,4 @@
-// Package urlcheck probes HTTP(S) URLs with the same success rules as the monitor worker.
+// Package urlcheck проверяет HTTP(S) URL по тем же правилам успеха, что и worker мониторов.
 package urlcheck
 
 import (
@@ -11,62 +11,65 @@ import (
 	"time"
 )
 
-// RequestTimeout is the per-request deadline used for monitor probes.
+// RequestTimeout — дедлайн на один запрос при проверке мониторов.
 const RequestTimeout = 30 * time.Second
 
-// MaxProbeBodyBytes caps how much of an HTTP response body is drained during a probe.
-// Larger bodies are discarded after this limit so slow/huge downloads cannot hold a check slot.
+// MaxProbeBodyBytes ограничивает объём тела HTTP-ответа, считываемого при проверке.
+// Более крупные тела отбрасываются после этого лимита, чтобы медленные/огромные загрузки
+// не занимали слот проверки.
 const MaxProbeBodyBytes = 64 * 1024
 
-// browserLikeUserAgent mimics a common desktop Chrome browser so WAF / bot filters
-// are less likely to reject checks solely because of an obvious monitor User-Agent.
+// browserLikeUserAgent имитирует обычный десктопный Chrome, чтобы WAF / bot-фильтры
+// реже отклоняли проверки только из-за явного User-Agent монитора.
 const browserLikeUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// browserLikeAccept is a typical browser Accept header for a top-level document navigation.
+// browserLikeAccept — типичный заголовок Accept браузера для навигации к документу верхнего уровня.
 const browserLikeAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
 
-// browserLikeAcceptLanguage prefers English and Russian so localized sites still treat the
-// request as a normal browser visit from an international client.
+// browserLikeAcceptLanguage предпочитает английский и русский, чтобы локализованные сайты
+// по-прежнему воспринимали запрос как обычный визит браузера от международного клиента.
 const browserLikeAcceptLanguage = "en-US,en;q=0.9,ru;q=0.8"
 
-// Result is the outcome of a single URL probe.
+// Result — результат одной проверки URL.
 type Result struct {
-	// URL is the address that was probed.
+	// URL — адрес, который был проверен.
 	URL string
-	// Up is true when the response status is in [200, 400).
+	// Up равен true, когда статус ответа в диапазоне [200, 400).
 	Up bool
-	// StatusCode is the HTTP status when a response was received; zero on transport errors.
+	// StatusCode — HTTP-статус при получении ответа; ноль при ошибках транспорта.
 	StatusCode int
-	// ErrMsg describes why the probe failed when Up is false.
+	// ErrMsg описывает причину неудачи проверки, когда Up равен false.
 	ErrMsg string
-	// DurationMs is how long the probe took in milliseconds.
+	// DurationMs — длительность проверки в миллисекундах.
 	DurationMs int64
 }
 
-// IsUpStatus reports whether statusCode counts as "up" for monitor checks.
-// statusCode is the HTTP response status from the probed URL.
+// IsUpStatus сообщает, считается ли statusCode «up» для проверок мониторов.
+// statusCode — HTTP-статус ответа проверенного URL.
 func IsUpStatus(statusCode int) bool {
 	return statusCode >= 200 && statusCode < 400
 }
 
-// SetBrowserLikeHeaders attaches request headers that resemble a normal browser GET.
-// req is the outbound probe request that will be sent by the HTTP client.
-// This reduces false downs from simple bot filters that reject custom monitor User-Agents.
-// Meta properties (for example WhatsApp) return HTTP 400 for a Chrome User-Agent without
-// Sec-Fetch-* navigation headers, so those are included as well.
+// SetBrowserLikeHeaders добавляет заголовки запроса, похожие на обычный браузерный GET.
+// req — исходящий запрос проверки, который отправит HTTP-клиент.
+// Это снижает число ложных «down» из-за простых bot-фильтров, отклоняющих кастомные User-Agent мониторов.
+// Meta-сайты (например WhatsApp) возвращают HTTP 400 для User-Agent Chrome без
+// заголовков навигации Sec-Fetch-*, поэтому они тоже добавляются.
 func SetBrowserLikeHeaders(req *http.Request) {
+	// Имитация Chrome на Linux — снижает блокировки bot-фильтрами.
 	req.Header.Set("User-Agent", browserLikeUserAgent)
 	req.Header.Set("Accept", browserLikeAccept)
 	req.Header.Set("Accept-Language", browserLikeAcceptLanguage)
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	// Sec-Fetch-* нужны некоторым сайтам (WhatsApp и др.) — иначе HTTP 400.
 	req.Header.Set("Sec-Fetch-Dest", "document")
 	req.Header.Set("Sec-Fetch-Mode", "navigate")
 	req.Header.Set("Sec-Fetch-Site", "none")
 	req.Header.Set("Sec-Fetch-User", "?1")
 }
 
-// NewClient builds an HTTP client suitable for monitor probes.
-// maxConcurrent sizes connection pools; values below 1 become 1.
+// NewClient создаёт HTTP-клиент, подходящий для проверок мониторов.
+// maxConcurrent задаёт размер пулов соединений; значения ниже 1 становятся 1.
 func NewClient(maxConcurrent int) *http.Client {
 	if maxConcurrent < 1 {
 		maxConcurrent = 1
@@ -75,6 +78,7 @@ func NewClient(maxConcurrent int) *http.Client {
 		Timeout:   RequestTimeout,
 		Transport: newTransport(maxConcurrent),
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			// Не следуем бесконечным redirect-цепочкам — максимум 5 переходов.
 			if len(via) >= 5 {
 				return fmt.Errorf("too many redirects")
 			}
@@ -83,11 +87,12 @@ func NewClient(maxConcurrent int) *http.Client {
 	}
 }
 
-// newTransport builds an HTTP transport sized for concurrent probes.
-// maxConcurrent is used to size connection pools.
+// newTransport создаёт HTTP transport, рассчитанный на параллельные проверки.
+// maxConcurrent используется для размера пулов соединений.
 func newTransport(maxConcurrent int) *http.Transport {
 	idleConns := maxConcurrent * 2
 	if idleConns < 100 {
+		// Минимальный пул idle-соединений для типичной нагрузки worker.
 		idleConns = 100
 	}
 	return &http.Transport{
@@ -106,31 +111,37 @@ func newTransport(maxConcurrent int) *http.Transport {
 	}
 }
 
-// Probe performs a GET against rawURL and reports whether the site is considered up.
-// ctx cancels the probe; client performs the HTTP request (must be non-nil).
-// rawURL is the absolute HTTP or HTTPS address to check.
+// Probe выполняет GET к rawURL и сообщает, считается ли сайт доступным.
+// ctx отменяет проверку; client выполняет HTTP-запрос (не должен быть nil).
+// rawURL — абсолютный HTTP или HTTPS адрес для проверки.
 func Probe(ctx context.Context, client *http.Client, rawURL string) Result {
 	result := Result{URL: rawURL}
 	start := time.Now()
 
+	// ctx отменяет запрос (таймаут клиента или отмена bulk-verify).
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
+		// Невалидный URL или ошибка сборки запроса — без HTTP-статуса.
 		result.DurationMs = time.Since(start).Milliseconds()
 		result.ErrMsg = err.Error()
 		return result
 	}
+	// Браузероподобные заголовки снижают ложные «down» от простых bot-фильтров.
 	SetBrowserLikeHeaders(req)
 
 	resp, err := client.Do(req)
 	result.DurationMs = time.Since(start).Milliseconds()
 	if err != nil {
+		// Таймаут, DNS, TLS, connection reset и т.д. — транспортная ошибка, Up=false.
 		result.ErrMsg = err.Error()
 		return result
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// Считываем тело до лимита и отбрасываем — иначе conn не вернётся в pool.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, MaxProbeBodyBytes))
 
 	result.StatusCode = resp.StatusCode
+	// «Up» — любой 2xx/3xx; 4xx/5xx считаем недоступностью цели.
 	if !IsUpStatus(resp.StatusCode) {
 		result.ErrMsg = fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
 		return result
@@ -140,10 +151,10 @@ func Probe(ctx context.Context, client *http.Client, rawURL string) Result {
 	return result
 }
 
-// ProbeAll probes each URL concurrently and returns results in the same order as urls.
-// ctx cancels outstanding probes; client performs HTTP requests.
-// urls are absolute HTTP/HTTPS addresses to check.
-// maxConcurrent caps simultaneous probes; values below 1 become 1.
+// ProbeAll проверяет каждый URL параллельно и возвращает результаты в том же порядке, что и urls.
+// ctx отменяет незавершённые проверки; client выполняет HTTP-запросы.
+// urls — абсолютные HTTP/HTTPS адреса для проверки.
+// maxConcurrent ограничивает число одновременных проверок; значения ниже 1 становятся 1.
 func ProbeAll(ctx context.Context, client *http.Client, urls []string, maxConcurrent int) []Result {
 	if len(urls) == 0 {
 		return nil
@@ -158,10 +169,11 @@ func ProbeAll(ctx context.Context, client *http.Client, urls []string, maxConcur
 
 	for i, rawURL := range urls {
 		wg.Add(1)
-		sem <- struct{}{}
+		sem <- struct{}{} // захват слота семафора
 		go func(idx int, u string) {
 			defer wg.Done()
-			defer func() { <-sem }()
+			defer func() { <-sem }() // освобождение слота
+			// results[idx] сохраняет порядок входного слайса urls.
 			results[idx] = Probe(ctx, client, u)
 		}(i, rawURL)
 	}
@@ -170,12 +182,13 @@ func ProbeAll(ctx context.Context, client *http.Client, urls []string, maxConcur
 	return results
 }
 
-// UnavailableURLs returns probe results that are not up, preserving input order.
-// results are outcomes from Probe or ProbeAll.
+// UnavailableURLs возвращает результаты проверок, которые не «up», сохраняя порядок входа.
+// results — исходы Probe или ProbeAll.
 func UnavailableURLs(results []Result) []Result {
 	out := make([]Result, 0)
 	for _, r := range results {
 		if !r.Up {
+			// Сохраняем порядок входа — удобно для сообщений об ошибках bulk-create.
 			out = append(out, r)
 		}
 	}

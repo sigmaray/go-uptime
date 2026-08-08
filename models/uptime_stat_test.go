@@ -6,6 +6,7 @@ import (
 )
 
 func TestUptimeSummaryPercent(t *testing.T) {
+	// Arrange: табличные случаи для расчёта процента uptime.
 	tests := []struct {
 		name    string
 		summary UptimeSummary
@@ -35,7 +36,9 @@ func TestUptimeSummaryPercent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act: вызываем Percent() для текущего summary.
 			got := tt.summary.Percent()
+			// Assert: процент должен совпадать с ожиданием.
 			if got != tt.want {
 				t.Fatalf("Percent() = %v, want %v", got, tt.want)
 			}
@@ -44,6 +47,7 @@ func TestUptimeSummaryPercent(t *testing.T) {
 }
 
 func TestUptimePeriodEligible(t *testing.T) {
+	// Arrange: фиксированное «сейчас» и период 24 часа для проверки eligibility.
 	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
 	period := 24 * time.Hour
 
@@ -71,7 +75,9 @@ func TestUptimePeriodEligible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act: проверяем, достаточно ли монитор «прожил» для периода.
 			got := uptimePeriodEligible(tt.createdAt, now, period)
+			// Assert: eligibility должна совпадать с таблицей.
 			if got != tt.want {
 				t.Fatalf("uptimePeriodEligible() = %v, want %v", got, tt.want)
 			}
@@ -80,15 +86,19 @@ func TestUptimePeriodEligible(t *testing.T) {
 }
 
 func TestEffectiveSince(t *testing.T) {
+	// Arrange: нижняя граница периода и время создания монитора.
 	since := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 7, 4, 11, 0, 0, 0, time.UTC)
 
+	// Act + Assert: монитор создан после since — считаем с момента создания.
 	got := effectiveSince(createdAt, since)
 	if !got.Equal(createdAt) {
 		t.Fatalf("effectiveSince() = %v, want %v", got, createdAt)
 	}
 
+	// Arrange: монитор старше since.
 	older := time.Date(2026, 7, 4, 9, 0, 0, 0, time.UTC)
+	// Act + Assert: берём since как начало окна.
 	got = effectiveSince(older, since)
 	if !got.Equal(since) {
 		t.Fatalf("effectiveSince() = %v, want %v", got, since)
@@ -100,6 +110,7 @@ func TestBuildUptimeHistoryBarsSkipsPreCreationMinutes(t *testing.T) {
 		t.Skip("requires database")
 	}
 
+	// Arrange: чистая БД, монитор создан 10 минут назад, 5 минутных bucket'ов после создания.
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
@@ -124,14 +135,17 @@ func TestBuildUptimeHistoryBarsSkipsPreCreationMinutes(t *testing.T) {
 		}
 	}
 
+	// Act: строим историю баров за фиксированное число минут.
 	bars, err := BuildUptimeHistoryBars(db, monitor.ID, createdAt, now)
 	if err != nil {
 		t.Fatalf("BuildUptimeHistoryBars: %v", err)
 	}
+	// Assert: всегда возвращается полный набор слотов истории.
 	if len(bars) != uptimeHistoryMinutes {
 		t.Fatalf("bar count = %d, want %d", len(bars), uptimeHistoryMinutes)
 	}
 
+	// Assert: до createdAt — nodata, после — up для заполненных bucket'ов.
 	noDataBeforeCreation := 0
 	upAfterCreation := 0
 	for _, bar := range bars {
@@ -158,6 +172,7 @@ func TestLoadMonitorUptimesAggregatesMultipleMonitors(t *testing.T) {
 		t.Skip("requires database")
 	}
 
+	// Arrange: два монитора с разной долей up в minutely/hourly/daily stat.
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
@@ -197,10 +212,12 @@ func TestLoadMonitorUptimesAggregatesMultipleMonitors(t *testing.T) {
 		monitors[0].ID: createdAt,
 		monitors[1].ID: createdAt,
 	}
+	// Act: загружаем uptime для обоих мониторов одним запросом.
 	got, err := LoadMonitorUptimes(db, []uint{monitors[0].ID, monitors[1].ID}, createdAtByID, now)
 	if err != nil {
 		t.Fatalf("LoadMonitorUptimes: %v", err)
 	}
+	// Assert: monitor one — 100%, monitor two — 50% на всех периодах с данными.
 	if got[monitors[0].ID].Hour1.Percent() != 100 {
 		t.Fatalf("monitor one 1h uptime = %v, want 100", got[monitors[0].ID].Hour1.Percent())
 	}
@@ -216,20 +233,24 @@ func TestLoadMonitorUptimesAggregatesMultipleMonitors(t *testing.T) {
 }
 
 func TestTruncateToBucket(t *testing.T) {
+	// Arrange: timestamp с секундами и наносекундами внутри минуты/часа/дня.
 	ts := time.Date(2026, 7, 4, 15, 47, 33, 500, time.UTC)
 
+	// Act + Assert: minutely bucket обрезает до начала минуты.
 	minute := truncateToBucket(ts, uptimeGranularityMinutely)
 	wantMinute := time.Date(2026, 7, 4, 15, 47, 0, 0, time.UTC)
 	if !minute.Equal(wantMinute) {
 		t.Fatalf("minute bucket = %v, want %v", minute, wantMinute)
 	}
 
+	// Act + Assert: hourly bucket — начало часа.
 	hour := truncateToBucket(ts, uptimeGranularityHourly)
 	wantHour := time.Date(2026, 7, 4, 15, 0, 0, 0, time.UTC)
 	if !hour.Equal(wantHour) {
 		t.Fatalf("hour bucket = %v, want %v", hour, wantHour)
 	}
 
+	// Act + Assert: daily bucket — полночь UTC.
 	day := truncateToBucket(ts, uptimeGranularityDaily)
 	wantDay := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
 	if !day.Equal(wantDay) {
@@ -242,6 +263,7 @@ func TestAddDurationToGranularitySplitsAcrossBuckets(t *testing.T) {
 		t.Skip("requires database")
 	}
 
+	// Arrange: интервал 60 секунд пересекает границу двух минутных bucket'ов.
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
@@ -253,10 +275,12 @@ func TestAddDurationToGranularitySplitsAcrossBuckets(t *testing.T) {
 	start := time.Date(2026, 7, 4, 10, 59, 30, 0, time.UTC)
 	end := time.Date(2026, 7, 4, 11, 0, 30, 0, time.UTC)
 
+	// Act: добавляем up-длительность с разбиением по minutely granularity.
 	if err := addDurationToGranularity(db, monitor.ID, start, end, true, uptimeGranularityMinutely); err != nil {
 		t.Fatalf("addDurationToGranularity: %v", err)
 	}
 
+	// Assert: две записи по 30 секунд в каждом bucket.
 	var buckets []StatMinutely
 	if err := db.Where("monitor_url_id = ?", monitor.ID).Order("bucket_at asc").Find(&buckets).Error; err != nil {
 		t.Fatalf("load buckets: %v", err)
@@ -274,6 +298,7 @@ func TestBackfillUptimeStats(t *testing.T) {
 		t.Skip("requires database")
 	}
 
+	// Arrange: три последовательных check — два up, один down (50% за окно).
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
@@ -292,10 +317,12 @@ func TestBackfillUptimeStats(t *testing.T) {
 		t.Fatalf("create checks: %v", err)
 	}
 
+	// Act: backfill пересчитывает stat-таблицы из monitor_checks.
 	if err := BackfillUptimeStats(db); err != nil {
 		t.Fatalf("BackfillUptimeStats: %v", err)
 	}
 
+	// Assert: 24h uptime = 50% по агрегированным данным.
 	uptime, err := LoadMonitorUptime(db, monitor.ID, base.Add(-25*time.Hour), base.Add(3*time.Minute))
 	if err != nil {
 		t.Fatalf("LoadMonitorUptime: %v", err)

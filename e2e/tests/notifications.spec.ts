@@ -1,5 +1,8 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 
+// E2e-тесты настроек уведомлений (Telegram/SMTP) и отображения uptime на странице монитора.
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown>) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +10,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: import('@playwright/test').Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -54,6 +58,7 @@ test.describe('Notifications', () => {
   });
 
   test('disables monitor notification checkboxes without credentials', async ({ page }) => {
+    // Без сохранённых credentials в Settings чекбоксы notify на форме монитора disabled.
     await page.goto('/admin/monitors/new');
     await expect(page.locator('#notify_telegram')).toBeDisabled();
     await expect(page.locator('#notify_smtp')).toBeDisabled();
@@ -83,6 +88,7 @@ test.describe('Notifications', () => {
     await page.locator('#notify_telegram').check();
     await page.getByRole('button', { name: 'Create' }).click();
 
+    // Флаг notify_telegram сохраняется — виден на форме Edit.
     await page
       .getByRole('row', { name: /https:\/\/notify\.example\.com/ })
       .getByRole('link', { name: 'Edit' })
@@ -109,6 +115,7 @@ test.describe('Monitor uptime display', () => {
     });
     const monitorID = idResult.rows[0][0] as string;
 
+    // Монитор «старше» часа + stat_minutely для расчёта процентов uptime.
     await apiCall(request, 'sql', {
       query: `UPDATE monitor_urls SET created_at = NOW() - INTERVAL '2 hours'
               WHERE url = 'https://uptime-detail.example.com'`,

@@ -7,6 +7,7 @@ import (
 )
 
 func TestEncodeFields(t *testing.T) {
+	// Табличный test EncodeFields: JSON object passthrough, plain text → JSON string.
 	tests := []struct {
 		name string
 		in   string
@@ -19,6 +20,7 @@ func TestEncodeFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: пустая строка остаётся пустой; не-JSON оборачивается в кавычки.
 			got := EncodeFields(tt.in)
 			if string(got) != tt.want {
 				t.Fatalf("EncodeFields(%q) = %s, want %s", tt.in, got, tt.want)
@@ -28,9 +30,11 @@ func TestEncodeFields(t *testing.T) {
 }
 
 func TestAddErrorFieldsEmbedAsJSON(t *testing.T) {
+	// Arrange: чистый in-memory store.
 	resetForTest()
 	AddError("boom", `{"monitor_id":7}`)
 
+	// Act: marshal RecentErrors[0] как для API response.
 	raw, err := json.Marshal(RecentErrors()[0])
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
@@ -39,6 +43,7 @@ func TestAddErrorFieldsEmbedAsJSON(t *testing.T) {
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
+	// Assert: fields — вложенный JSON object, не escaped string.
 	fields, ok := parsed["fields"].(map[string]any)
 	if !ok {
 		t.Fatalf("fields is %T, want object; raw=%s", parsed["fields"], raw)
@@ -51,10 +56,13 @@ func TestAddErrorFieldsEmbedAsJSON(t *testing.T) {
 func TestRecentLogsNewestFirst(t *testing.T) {
 	resetForTest()
 
+	// Arrange: две записи в порядке older → newer.
 	AddLog("info", "older entry", "")
 	AddLog("info", "newer entry", "")
 
+	// Act.
 	logs := RecentLogs()
+	// Assert: newest-first ordering.
 	if len(logs) != 2 {
 		t.Fatalf("RecentLogs() len = %d, want 2", len(logs))
 	}
@@ -69,10 +77,13 @@ func TestRecentLogsNewestFirst(t *testing.T) {
 func TestRecentEventsNewestFirst(t *testing.T) {
 	resetForTest()
 
+	// Arrange: domain events, не zerolog lines.
 	AddEvent("monitor", "older event")
 	AddEvent("monitor", "newer event")
 
+	// Act.
 	events := RecentEvents()
+	// Assert: тот же newest-first контракт, что и для logs/errors.
 	if len(events) != 2 {
 		t.Fatalf("RecentEvents() len = %d, want 2", len(events))
 	}
@@ -87,10 +98,13 @@ func TestRecentEventsNewestFirst(t *testing.T) {
 func TestRecentErrorsNewestFirst(t *testing.T) {
 	resetForTest()
 
+	// Arrange.
 	AddError("older error", "ctx")
 	AddError("newer error", "ctx")
 
+	// Act.
 	errors := RecentErrors()
+	// Assert.
 	if len(errors) != 2 {
 		t.Fatalf("RecentErrors() len = %d, want 2", len(errors))
 	}
@@ -105,16 +119,20 @@ func TestRecentErrorsNewestFirst(t *testing.T) {
 func TestEventsPageReturnsNewestFirstPage(t *testing.T) {
 	resetForTest()
 
+	// Arrange: 105 events — больше одной страницы по 100.
 	for i := 1; i <= 105; i++ {
 		AddEvent("test", fmt.Sprintf("event %d", i))
 	}
 
+	// Act: page 1 — первые 100 newest.
 	page1 := EventsPage(1, 100)
 	if len(page1) != 100 {
 		t.Fatalf("EventsPage(1, 100) len = %d, want 100", len(page1))
 	}
 
+	// Act: page 2 — остаток 5 записей.
 	page2 := EventsPage(2, 100)
+	// Assert: pagination не теряет хвост.
 	if len(page2) != 5 {
 		t.Fatalf("EventsPage(2, 100) len = %d, want 5", len(page2))
 	}
@@ -123,10 +141,13 @@ func TestEventsPageReturnsNewestFirstPage(t *testing.T) {
 func TestRecentMonitorRequestsNewestFirst(t *testing.T) {
 	resetForTest()
 
+	// Arrange: два HTTP probe request log entry.
 	AddMonitorRequest("one", "https://one.example", 200, 10, true, "")
 	AddMonitorRequest("two", "https://two.example", 500, 20, false, "server error")
 
+	// Act.
 	requests := RecentMonitorRequests()
+	// Assert: newest request (two) первым.
 	if len(requests) != 2 {
 		t.Fatalf("RecentMonitorRequests() len = %d, want 2", len(requests))
 	}
@@ -141,9 +162,11 @@ func TestRecentMonitorRequestsNewestFirst(t *testing.T) {
 func TestRecentLogsStoresZerologEntriesSeparatelyFromEvents(t *testing.T) {
 	resetForTest()
 
+	// Arrange: AddLog (zerolog capture path) и AddEvent (domain event) — разные буферы.
 	AddLog("info", "GET /admin/monitors", `{"status":200}`)
 	AddEvent("monitor", `Created monitor "example.com" (https://example.com)`)
 
+	// Assert: RecentLogs — только HTTP access log line.
 	logs := RecentLogs()
 	if len(logs) != 1 {
 		t.Fatalf("RecentLogs() len = %d, want 1", len(logs))
@@ -152,6 +175,7 @@ func TestRecentLogsStoresZerologEntriesSeparatelyFromEvents(t *testing.T) {
 		t.Fatalf("unexpected log message: %q", logs[0].Message)
 	}
 
+	// Assert: RecentEvents — только business event, без смешивания с logs.
 	events := RecentEvents()
 	if len(events) != 1 {
 		t.Fatalf("RecentEvents() len = %d, want 1", len(events))
@@ -161,6 +185,7 @@ func TestRecentLogsStoresZerologEntriesSeparatelyFromEvents(t *testing.T) {
 	}
 }
 
+// resetForTest очищает in-memory applog между тестами — изоляция без shared state.
 func resetForTest() {
 	ClearAll()
 }

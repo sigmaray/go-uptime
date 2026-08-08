@@ -1,5 +1,8 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
 
+// E2e-тесты сортировки списка мониторов: колонки, порядок, сохранение sort при пагинации.
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown> = {}) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +10,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -19,10 +23,12 @@ async function login(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
+/** ID мониторов из первой колонки таблицы (текущий порядок строк). */
 async function monitorIDs(page: Page): Promise<string[]> {
   return page.locator('.monitors-table tbody tr td:first-child a').allTextContents();
 }
 
+/** URL мониторов из второй колонки таблицы (текущий порядок строк). */
 async function monitorURLs(page: Page): Promise<string[]> {
   return page.locator('.monitors-table tbody tr td:nth-child(2) a').allTextContents();
 }
@@ -38,6 +44,7 @@ test.describe('Monitors list sorting', () => {
 
     await page.goto('/admin/monitors');
 
+    // Сортируемые колонки — есть ссылки asc/desc.
     await expect(page.getByRole('link', { name: 'Sort by ID ascending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by ID descending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by URL ascending' })).toBeVisible();
@@ -49,6 +56,7 @@ test.describe('Monitors list sorting', () => {
     await expect(page.getByRole('link', { name: 'Sort by Error ascending' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sort by Error descending' })).toBeVisible();
 
+    // Name, Uptime, action-колонки — без sort-ссылок.
     await expect(page.getByRole('link', { name: /Sort by Name/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Uptime/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Sort by Last 30 min/i })).toHaveCount(0);
@@ -74,12 +82,14 @@ test.describe('Monitors list sorting', () => {
     const idsDesc = [...idsAsc].reverse();
 
     await page.goto('/admin/monitors');
+    // Сортировка по ID asc — порядок строк и активная ссылка.
     await page.getByRole('link', { name: 'Sort by ID ascending' }).click();
     await expect(page).toHaveURL(/sort=ID/);
     await expect(page).toHaveURL(/order=asc/);
     await expect(await monitorIDs(page)).toEqual(idsAsc);
     await expect(page.getByRole('link', { name: 'Sort by ID ascending' })).toHaveClass(/table-sort__link--active/);
 
+    // Сортировка по ID desc.
     await page.getByRole('link', { name: 'Sort by ID descending' }).click();
     await expect(page).toHaveURL(/order=desc/);
     await expect(await monitorIDs(page)).toEqual(idsDesc);
@@ -131,6 +141,7 @@ test.describe('Monitors list sorting', () => {
   test('keeps sort when paginating monitors', async ({ page, request }) => {
     await login(page, request);
     await apiCall(request, 'clear-table', { table: 'monitor_urls' });
+    // 101 монитор — вторая страница с одной строкой.
     await apiCall(request, 'sql', {
       query: `INSERT INTO monitor_urls (url, name, created_at, updated_at)
               SELECT 'https://sortpag' || n || '.example.com',
@@ -153,6 +164,7 @@ test.describe('Monitors list sorting', () => {
     await expect(page.locator('.monitors-table tbody tr')).toHaveCount(100);
     await expect(await monitorIDs(page)).toEqual(idsAsc.slice(0, 100));
 
+    // Ссылки пагинации должны нести sort=ID&order=asc в href.
     const pagination = page.getByLabel('Monitors pagination');
     await expect(pagination.getByRole('link', { name: '2', exact: true })).toHaveAttribute(
       'href',
@@ -170,6 +182,7 @@ test.describe('Monitors list sorting', () => {
     await expect(page.locator('.monitors-table tbody tr')).toHaveCount(1);
     await expect(await monitorIDs(page)).toEqual([idsAsc[100]]);
 
+    // Смена на desc сбрасывает page на 1.
     await page.getByRole('link', { name: 'Sort by ID descending' }).click();
     await expect(page).toHaveURL(/order=desc/);
     await expect(page).not.toHaveURL(/page=/);

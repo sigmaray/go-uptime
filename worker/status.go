@@ -12,23 +12,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// batchResultsLoop receives check results from the worker routines and batches them.
-// By writing to the database in bulk (e.g., every 2 seconds or 150 items),
-// we avoid N+1 write issues and drastically reduce PostgreSQL transaction overhead.
+// batchResultsLoop получает результаты проверок от worker goroutine и собирает их в batch.
+// Запись в БД пакетами (например, каждые 2 секунды или 150 элементов)
+// избегает N+1 записей и существенно снижает накладные расходы транзакций PostgreSQL.
 func (w *MonitorWorker) batchResultsLoop() {
 	defer close(w.batchDone)
 
-	// Flush the batch every 2 seconds even if we haven't reached the batch size limit.
+	// Flush batch каждые 2 секунды, даже если лимит размера batch ещё не достигнут.
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	// Локальный слайс — между flush сюда копятся результаты из resultJobs.
 	var batch []checkResult
 
 	for {
 		select {
 		case res, ok := <-w.resultJobs:
 			if !ok {
-				// The result channel was closed (worker is stopping); drain leftovers locally.
+				// Channel result закрыт (worker останавливается); сливаем остатки локально.
 				for len(batch) > 0 {
 					batch = w.flushBatch(batch)
 					w.persistBacklog.Store(int64(len(batch)))
@@ -36,13 +37,15 @@ func (w *MonitorWorker) batchResultsLoop() {
 				return
 			}
 			batch = append(batch, res)
+			// Метрика для Stats и claimBudget — сколько ждёт записи вне channel.
 			w.persistBacklog.Store(int64(len(batch)))
-			// If we reached the batch size limit (e.g., 150), flush immediately.
+			// При достижении лимита размера batch (например, 150) сразу выполняем flush.
 			if len(batch) >= 150 {
 				batch = w.flushBatch(batch)
 				w.persistBacklog.Store(int64(len(batch)))
 			}
 		case <-ticker.C:
+			// Периодический flush — не держим результаты в памяти дольше 2 с.
 			if len(batch) > 0 {
 				batch = w.flushBatch(batch)
 				w.persistBacklog.Store(int64(len(batch)))
@@ -51,11 +54,11 @@ func (w *MonitorWorker) batchResultsLoop() {
 	}
 }
 
-// flushBatch persists a completed result batch and retries briefly on failure.
-// batch is the set of completed checks ready to be written to PostgreSQL.
-// It returns results that still need another flush attempt (nil/empty on success).
-// Leftovers stay in the batch loop so a full resultJobs channel cannot drop them
-// and so the batch goroutine never blocks sending into the channel it alone reads.
+// flushBatch сохраняет завершённый batch результатов и кратко повторяет попытку при сбое.
+// batch — набор завершённых проверок, готовых к записи в PostgreSQL.
+// Возвращает результаты, которым нужна ещё одна попытка flush (nil/пустой при успехе).
+// Остатки остаются в batch loop, чтобы полный channel resultJobs не терял их
+// и goroutine batch никогда не блокировалась при отправке в channel, который читает только она.
 func (w *MonitorWorker) flushBatch(batch []checkResult) []checkResult {
 	const maxImmediateAttempts = 3
 
@@ -63,59 +66,65 @@ func (w *MonitorWorker) flushBatch(batch []checkResult) []checkResult {
 	for attempt := 1; attempt <= maxImmediateAttempts; attempt++ {
 		err = w.processBatch(batch)
 		if err == nil {
+			// Успех — локальный batch можно отбросить.
 			return nil
 		}
 		log.Error().Err(err).Int("attempt", attempt).Msg("failed to process monitor checks batch")
 		if attempt < maxImmediateAttempts {
+			// Короткая пауза перед повтором — transient ошибки БД/сети.
 			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
 		}
 	}
+	// Не удалось за три попытки — оставляем в batch loop с увеличенным persistAttempts.
 	return retainFailedBatch(batch)
 }
 
-// maxPersistRequeues caps how many times a single check result may be retried after failed flushes.
+// maxPersistRequeues ограничивает, сколько раз один результат проверки можно повторить после неудачных flush.
 const maxPersistRequeues = 5
 
-// retainFailedBatch increments persist attempts and keeps results that may still be retried.
-// batch is the set that exhausted immediate flush retries.
-// Results that exceeded maxPersistRequeues are logged and discarded.
+// retainFailedBatch увеличивает счётчик persist attempts и сохраняет результаты, которые ещё можно повторить.
+// batch — набор, исчерпавший немедленные повторы flush.
+// Результаты, превысившие maxPersistRequeues, логируются и отбрасываются.
 func retainFailedBatch(batch []checkResult) []checkResult {
 	out := make([]checkResult, 0, len(batch))
 	for _, res := range batch {
 		res.persistAttempts++
 		if res.persistAttempts > maxPersistRequeues {
+			// Исчерпали лимит — логируем и отбрасываем, чтобы не зациклиться навечно.
 			log.Error().
 				Uint("monitor_id", res.monitor.ID).
 				Int("persist_attempts", res.persistAttempts).
 				Msg("dropping monitor check result after persist retries")
 			continue
 		}
+		// Вернётся в batch loop — попробуем flush на следующем tick или при новых result.
 		out = append(out, res)
 	}
 	return out
 }
 
-// monitorStatusUpdate holds one monitor row's fields written after a completed probe.
+// monitorStatusUpdate содержит поля строки монитора, записываемые после завершённой проверки.
 type monitorStatusUpdate struct {
-	// ID is the monitor_urls.id being updated.
+	// ID — monitor_urls.id, который обновляется.
 	ID uint
-	// IsUp is the latest probe availability.
+	// IsUp — последняя доступность по проверке.
 	IsUp bool
-	// NextCheckAt is the final schedule after the probe completed.
+	// NextCheckAt — финальное расписание после завершения проверки.
 	NextCheckAt time.Time
-	// LastError is the probe error text; empty when the probe succeeded.
+	// LastError — текст ошибки проверки; пустой при успешной проверке.
 	LastError string
 }
 
-// processBatch executes a single all-or-nothing database transaction to save check results.
-// It bulk-updates monitor statuses, tracks incident start/end times, calculates uptime stats,
-// and bulk-inserts all individual check history records.
-// batch is the set of completed HTTP probes to persist.
+// processBatch выполняет одну атомарную транзакцию БД для сохранения результатов проверок.
+// Массово обновляет статусы мониторов, отслеживает время начала/окончания incidents,
+// пересчитывает uptime stats и массово вставляет записи истории отдельных проверок.
+// batch — набор завершённых HTTP-проверок для сохранения.
 func (w *MonitorWorker) processBatch(batch []checkResult) error {
 	if len(batch) == 0 {
 		return nil
 	}
 
+	// Одна строка на monitor id — перекрывающиеся волны могут дать дубликаты.
 	batch = collapseBatchByMonitor(batch)
 	now := time.Now()
 
@@ -129,8 +138,12 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 			return fmt.Errorf("load existing monitors for batch: %w", err)
 		}
 		if len(existingIDs) == 0 {
+			// Все мониторы удалены после claim — batch бессмысленен.
 			return fmt.Errorf("bulk update monitor statuses: none of %d monitors still exist", len(batch))
 		}
+		// Монитор мог быть удалён в UI/API после claim и до flush batch.
+		// Результат проверки для несуществующей строки бессмысленен — отбрасываем,
+		// чтобы не писать checks/incidents/uptime для «осиротевших» id.
 		if len(existingIDs) != len(batch) {
 			exist := make(map[uint]struct{}, len(existingIDs))
 			for _, id := range existingIDs {
@@ -154,6 +167,7 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		globalInterval := models.GetCheckIntervalSeconds(tx)
 
 		for _, res := range batch {
+			// Финальное next_check_at — от now + интервал, перезаписывает lease из claim.
 			nextAt := now.Add(time.Duration(models.MonitorCheckIntervalSeconds(res.monitor, globalInterval)) * time.Second)
 			statusUpdates = append(statusUpdates, monitorStatusUpdate{
 				ID:          res.monitor.ID,
@@ -162,6 +176,8 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 				LastError:   res.errMsg,
 			})
 
+			// res.monitor.LastCheckedAt — снимок на момент claim (предыдущая граница интервала),
+			// а не значение после текущего flush; uptime считается между этими двумя точками.
 			if err := models.ApplyUptimeInterval(tx, res.monitor.ID, res.monitor.LastCheckedAt, now, res.isUp); err != nil {
 				return fmt.Errorf("update uptime stats for monitor %d: %w", res.monitor.ID, err)
 			}
@@ -183,6 +199,7 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		}
 
 		if len(checks) > 0 {
+			// Массовая вставка истории проверок одним INSERT.
 			if err := tx.Create(&checks).Error; err != nil {
 				return fmt.Errorf("insert monitor checks: %w", err)
 			}
@@ -194,7 +211,9 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		return err
 	}
 
-	// Trigger notifications outside the database transaction so we don't hold locks.
+	// Запускаем уведомления вне транзакции БД, чтобы не удерживать блокировки.
+	// wasUp/wasDown берутся из снимка до flush: при IsUp == nil (первая проверка) оба false —
+	// перехода ещё не было, уведомление не шлём. Оповещаем только при смене состояния UP↔DOWN.
 	for _, res := range batch {
 		var wasUp, wasDown bool
 		if res.monitor.IsUp != nil {
@@ -213,8 +232,9 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 	return nil
 }
 
-// collapseBatchByMonitor keeps the last result per monitor so bulk updates stay one row per id.
-// batch is the flushed check-result slice that may contain duplicate monitor ids.
+// collapseBatchByMonitor оставляет последний результат на монитор, чтобы bulk-обновления были по одной строке на id.
+// Перекрывающиеся волны claim могут вернуть несколько результатов с одним monitor id — оставляем последний
+// (самый свежий исход проверки). batch — слайс результатов после flush, который может содержать дубликаты id.
 func collapseBatchByMonitor(batch []checkResult) []checkResult {
 	if len(batch) <= 1 {
 		return batch
@@ -224,6 +244,7 @@ func collapseBatchByMonitor(batch []checkResult) []checkResult {
 	out := make([]checkResult, 0, len(batch))
 	for _, res := range batch {
 		if i, ok := indexByID[res.monitor.ID]; ok {
+			// Повторный id — перезаписываем более старый результат более свежим.
 			out[i] = res
 			continue
 		}
@@ -233,8 +254,8 @@ func collapseBatchByMonitor(batch []checkResult) []checkResult {
 	return out
 }
 
-// updateMonitorStatuses writes is_up, last_checked_at, next_check_at, and last_error for many monitors.
-// tx is the open transaction; now is the shared last_checked_at timestamp; updates are per-monitor fields.
+// updateMonitorStatuses записывает is_up, last_checked_at, next_check_at и last_error для многих мониторов.
+// tx — открытая транзакция; now — общий last_checked_at; updates — поля по каждому монитору.
 func updateMonitorStatuses(tx *gorm.DB, now time.Time, updates []monitorStatusUpdate) error {
 	if len(updates) == 0 {
 		return nil
@@ -246,6 +267,7 @@ func updateMonitorStatuses(tx *gorm.DB, now time.Time, updates []monitorStatusUp
 	nextAtArgs := make([]interface{}, 0, len(updates)*2)
 	errArgs := make([]interface{}, 0, len(updates)*2)
 
+	// Три параллельных CASE-выражения — один UPDATE на все поля статуса.
 	isUpCase.WriteString("CASE id")
 	nextAtCase.WriteString("CASE id")
 	errCase.WriteString("CASE id")
@@ -265,6 +287,7 @@ func updateMonitorStatuses(tx *gorm.DB, now time.Time, updates []monitorStatusUp
 	nextAtCase.WriteString(" END")
 	errCase.WriteString(" END")
 
+	// last_checked_at общий для всего batch — момент завершения flush.
 	result := tx.Model(&models.MonitorURL{}).
 		Where("id IN ?", ids).
 		Updates(map[string]interface{}{
@@ -277,19 +300,21 @@ func updateMonitorStatuses(tx *gorm.DB, now time.Time, updates []monitorStatusUp
 		return fmt.Errorf("bulk update monitor statuses: %w", result.Error)
 	}
 	if result.RowsAffected != int64(len(updates)) {
+		// Часть строк исчезла между проверкой existingIDs и UPDATE — считаем ошибкой.
 		return fmt.Errorf("bulk update monitor statuses: updated %d of %d", result.RowsAffected, len(updates))
 	}
 	return nil
 }
 
-// applyIncidentChanges resolves, creates, or updates open incidents for a completed check batch.
-// tx is the open transaction; now is the incident resolution/start timestamp; batch holds probe outcomes.
+// applyIncidentChanges закрывает, создаёт или обновляет открытые incidents для завершённого batch проверок.
+// tx — открытая транзакция; now — время закрытия/начала incident; batch содержит исходы проверок.
 func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error {
 	monitorIDs := make([]uint, 0, len(batch))
 	for _, res := range batch {
 		monitorIDs = append(monitorIDs, res.monitor.ID)
 	}
 
+	// Один запрос — все открытые incidents для мониторов из batch.
 	openByMonitor, err := models.FindOpenIncidentsByMonitorIDs(tx, monitorIDs)
 	if err != nil {
 		return fmt.Errorf("load open incidents: %w", err)
@@ -300,12 +325,14 @@ func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error
 	for _, res := range batch {
 		openIncident, hasOpen := openByMonitor[res.monitor.ID]
 		if res.isUp {
+			// Монитор восстановился — закрываем открытый incident, если он есть.
 			if hasOpen {
 				resolveIDs = append(resolveIDs, openIncident.ID)
 			}
 			continue
 		}
 		if !hasOpen {
+			// Монитор упал без открытого incident — создаём новый.
 			createIncidents = append(createIncidents, models.Incident{
 				MonitorURLID: res.monitor.ID,
 				StartedAt:    now,
@@ -313,6 +340,7 @@ func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error
 			})
 			continue
 		}
+		// Incident уже открыт — обновляем текст ошибки, если он изменился.
 		if openIncident.ErrorMessage != res.errMsg {
 			if err := tx.Model(&models.Incident{}).Where("id = ?", openIncident.ID).
 				Update("error_message", res.errMsg).Error; err != nil {
@@ -322,6 +350,7 @@ func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error
 	}
 
 	if len(resolveIDs) > 0 {
+		// Bulk resolve — resolved_at = now для всех восстановившихся мониторов.
 		if err := tx.Model(&models.Incident{}).Where("id IN ?", resolveIDs).
 			Update("resolved_at", now).Error; err != nil {
 			return fmt.Errorf("resolve incidents: %w", err)
@@ -330,6 +359,7 @@ func applyIncidentChanges(tx *gorm.DB, now time.Time, batch []checkResult) error
 	if len(createIncidents) > 0 {
 		for i := range createIncidents {
 			if err := tx.Create(&createIncidents[i]).Error; err != nil {
+				// Гонка с другим batch/worker: unique one-open-per-monitor уже создал incident — пропускаем.
 				if models.IsUniqueViolation(err) {
 					continue
 				}

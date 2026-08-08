@@ -13,20 +13,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// ClearTable clears the specified table after confirmation.
+// ClearTable безвозвратно удаляет все строки указанной таблицы (TRUNCATE/DELETE).
+// Деструктивная операция для dev/ops: требует интерактивного подтверждения [y/N].
 func ClearTable(db *gorm.DB, table string) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, fmt.Sprintf("Clear table %q? [y/N]: ", table)) {
 		fmt.Println("Aborted.")
 		return
 	}
+	// TRUNCATE через database.ClearTable — данные удалены, схема остаётся.
 	if err := database.ClearTable(db, table); err != nil {
 		log.Fatal().Err(err).Str("table", table).Msg("failed to clear table")
 	}
 	fmt.Printf("Table %q cleared.\n", table)
 }
 
-// ClearAllTables clears all tables after confirmation.
+// ClearAllTables безвозвратно очищает все таблицы приложения.
+// Деструктивная операция: сотрёт мониторы, инциденты, пользователей и прочие данные.
 func ClearAllTables(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, "This will clear ALL tables. Are you sure? [y/N]: ") {
@@ -39,7 +42,8 @@ func ClearAllTables(db *gorm.DB) {
 	fmt.Println("All tables cleared.")
 }
 
-// DropTable drops the specified table after confirmation.
+// DropTable удаляет схему указанной таблицы (DROP TABLE), а не только данные.
+// Ещё более разрушительно, чем ClearTable: потребуются миграции для восстановления структуры.
 func DropTable(db *gorm.DB, table string) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, fmt.Sprintf("Drop table %q? [y/N]: ", table)) {
@@ -52,7 +56,8 @@ func DropTable(db *gorm.DB, table string) {
 	fmt.Printf("Table %q dropped.\n", table)
 }
 
-// DropAllTables drops all tables after confirmation.
+// DropAllTables удаляет все таблицы приложения из схемы БД.
+// Максимально деструктивная команда — используйте только осознанно в dev/восстановлении.
 func DropAllTables(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 	if !confirmYes(reader, "This will DROP ALL tables. Are you sure? [y/N]: ") {
@@ -65,20 +70,21 @@ func DropAllTables(db *gorm.DB) {
 	fmt.Println("All tables dropped.")
 }
 
-// ExecuteSQL runs an SQL query and prints the result as a table.
+// ExecuteSQL выполняет SQL-запрос и выводит результат в виде таблицы.
 func ExecuteSQL(db *gorm.DB, query string) {
 	columns, rows, affected, err := database.ExecuteSQL(db, query)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to execute sql")
 	}
 	if columns != nil {
+		// SELECT/WITH — tabular output через cliutil.
 		cliutil.PrintTable(columns, rows)
 		return
 	}
 	fmt.Printf("Query executed. Rows affected: %d\n", affected)
 }
 
-// ShowTables prints the list of tables (helper command).
+// ShowTables выводит список таблиц (вспомогательная команда).
 func ShowTables(db *gorm.DB) {
 	tables, err := database.ListTables(db)
 	if err != nil {
@@ -95,7 +101,7 @@ func ShowTables(db *gorm.DB) {
 	cliutil.PrintTable([]string{"Table"}, rows)
 }
 
-// ReadSQLFromArgs joins arguments into a single SQL command.
+// ReadSQLFromArgs объединяет аргументы в одну SQL-команду.
 func ReadSQLFromArgs(args []string) string {
 	return strings.Join(args, " ")
 }

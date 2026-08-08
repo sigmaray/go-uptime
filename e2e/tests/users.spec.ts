@@ -1,5 +1,9 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 
+// E2e-тесты CRUD пользователей, мониторов, heartbeats, incidents, logs, settings и dev tools.
+// Большой набор сценариев UI + seed данных через /api/playwright (SQL, clear-table).
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown>) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +11,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: import('@playwright/test').Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -23,6 +28,7 @@ test.describe('Users CRUD', () => {
   test('creates, edits and deletes a user', async ({ page, request }) => {
     await login(page, request);
 
+    // Create user через UI.
     await page.goto('/admin/users');
     await page.getByRole('link', { name: 'Create User' }).click();
     await page.locator('#username').fill('newuser');
@@ -34,6 +40,7 @@ test.describe('Users CRUD', () => {
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('newuser')).toBeVisible();
 
+    // Edit: переименование.
     await page.getByRole('row', { name: /newuser/ }).getByRole('link', { name: 'Edit' }).click();
     await page.locator('#username').fill('renamed');
     await page.getByRole('button', { name: 'Save' }).click();
@@ -41,12 +48,14 @@ test.describe('Users CRUD', () => {
     await expect(page.getByText('Saved successfully.')).toBeVisible();
     await expect(page.getByText('renamed')).toBeVisible();
 
+    // Delete с подтверждением confirm().
     page.on('dialog', (dialog) => dialog.accept());
     await page.getByRole('row', { name: /renamed/ }).getByRole('button', { name: 'Delete' }).click();
     await expect(page).toHaveURL('/admin/users');
     await expect(page.getByText('Deleted successfully.')).toBeVisible();
     await expect(page.getByText('renamed')).not.toBeVisible();
 
+    // Flash-сообщение не «перетекает» на другую страницу после redirect.
     await page.goto('/admin/settings');
     await expect(page.getByText('Deleted successfully.')).toHaveCount(0);
   });
@@ -82,6 +91,7 @@ test.describe('Monitors', () => {
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(monitorUrl)).toBeVisible();
 
+    // Seed связанных incidents и monitor_checks — delete должен каскадно очистить.
     await apiCall(request, 'sql', {
       query: `INSERT INTO incidents (monitor_url_id, started_at, error_message)
               SELECT id, NOW(), 'related incident' FROM monitor_urls WHERE url = '${monitorUrl}'`,
@@ -125,6 +135,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill(monitorUrl);
     await page.getByRole('button', { name: 'Create' }).click();
 
+    // Open incident (resolved_at NULL) и resolved incident с длительностью 10m.
     await apiCall(request, 'sql', {
       query: `INSERT INTO incidents (monitor_url_id, started_at, resolved_at, error_message)
               SELECT id, NOW() - INTERVAL '10 minutes', NULL, '${openError}'
@@ -166,6 +177,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill(monitorUrl);
     await page.getByRole('button', { name: 'Create' }).click();
 
+    // 25 incidents и 25 heartbeats — по 20 на первой странице каждой таблицы.
     await apiCall(request, 'sql', {
       query: `INSERT INTO incidents (monitor_url_id, started_at, resolved_at, error_message)
               SELECT m.id, NOW() - (n || ' minutes')::interval, NOW() - ((n - 1) || ' minutes')::interval, 'incident ' || n
@@ -200,11 +212,13 @@ test.describe('Monitors', () => {
     await expect(heartbeatsPagination.getByRole('link', { name: '2', exact: true })).toBeVisible();
     await expect(heartbeatsPagination.locator('.page-item.active .page-link')).toHaveText('1');
 
+    // Пагинация incidents не сбрасывает heartbeats_page=1.
     await incidentsPagination.getByRole('link', { name: '2', exact: true }).click();
     await expect(page).toHaveURL(/incidents_page=2/);
     await expect(incidentsTable.locator('tbody tr')).toHaveCount(5);
     await expect(heartbeatsTable.locator('tbody tr')).toHaveCount(20);
 
+    // Next на heartbeats добавляет heartbeats_page=2, incidents_page сохраняется.
     await page.getByLabel('Heartbeat History pagination').getByRole('link', { name: 'Next' }).click();
     await expect(page).toHaveURL(/incidents_page=2/);
     await expect(page).toHaveURL(/heartbeats_page=2/);
@@ -247,6 +261,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://uptime.example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
+    // Монитор старше 24h + stat_minutely 3500/3600 → 97.22%.
     await apiCall(request, 'sql', {
       query: `UPDATE monitor_urls SET created_at = NOW() - INTERVAL '25 hours'
               WHERE url = 'https://uptime.example.com'`,
@@ -283,6 +298,7 @@ test.describe('Monitors', () => {
     await page.locator('#url').fill('https://recent.example.com');
     await page.getByRole('button', { name: 'Create' }).click();
 
+    // stat_minutely в текущей минуте, но до created_at монитора — bar nodata + up.
     await apiCall(request, 'sql', {
       query: `INSERT INTO stat_minutely (monitor_url_id, bucket_at, up_seconds, total_seconds)
               SELECT id, date_trunc('minute', NOW()), 60, 60
@@ -405,6 +421,7 @@ test.describe('Application logs', () => {
   });
 
   test('shows application events instead of HTTP access logs', async ({ page }) => {
+    // Dev tools генерирует applog event; на /admin/logs не должно быть GET /admin/logs access log.
     await page.goto('/admin/tools');
     await page.getByRole('button', { name: 'Generate test event' }).click();
     await expect(page.getByText(/Test event recorded:/)).toBeVisible();
@@ -430,6 +447,7 @@ test.describe('Application logs', () => {
     const count = await testRows.count();
     expect(count).toBeGreaterThanOrEqual(2);
 
+    // Время в первой колонке — по убыванию (новые сверху).
     const times: string[] = [];
     for (let i = 0; i < Math.min(count, 5); i++) {
       times.push((await testRows.nth(i).locator('td').first().textContent()) ?? '');

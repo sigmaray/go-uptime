@@ -6,16 +6,17 @@ import (
 	"go-uptime/models"
 )
 
-// runChecksConcurrently is a test-only helper that waits for every check to finish.
-// Production scheduling uses MonitorWorker.dispatchChecks instead.
-// monitors is the set of monitors to check.
-// maxConcurrent caps simultaneous checkFn calls; values below 1 become 1.
-// checkFn runs one probe and must be concurrency-safe.
+// runChecksConcurrently — тестовый helper, который ждёт завершения всех проверок.
+// В production вместо него используется MonitorWorker.dispatchChecks.
+// monitors — набор мониторов для проверки.
+// maxConcurrent ограничивает число одновременных вызовов checkFn; значения ниже 1 становятся 1.
+// checkFn выполняет одну проверку и должна быть безопасна для concurrent-вызовов.
 func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, checkFn func(models.MonitorURL)) {
 	if len(monitors) == 0 {
 		return
 	}
 	if maxConcurrent < 1 {
+		// Некорректный лимит — хотя бы одна goroutine одновременно.
 		maxConcurrent = 1
 	}
 
@@ -24,6 +25,7 @@ func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, chec
 
 	for _, monitor := range monitors {
 		wg.Add(1)
+		// Захватываем слот до старта goroutine — не создаём лишних ожидающих.
 		sem <- struct{}{}
 		go func(m models.MonitorURL) {
 			defer wg.Done()
@@ -32,5 +34,6 @@ func runChecksConcurrently(monitors []models.MonitorURL, maxConcurrent int, chec
 		}(monitor)
 	}
 
+	// Тест ждёт завершения всех проверок — в отличие от dispatchChecks в production.
 	wg.Wait()
 }

@@ -1,4 +1,4 @@
-// Package handlers implements Gin HTTP handlers for the admin UI and APIs.
+// Package handlers реализует Gin HTTP-обработчики для админ UI и API.
 package handlers
 
 import (
@@ -10,20 +10,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// Handler holds HTTP handler dependencies.
+// Handler содержит зависимости HTTP-обработчиков.
 type Handler struct {
 	DB        *gorm.DB
 	Templates *template.Template
 	Config    *config.Config
-	// Worker supplies live check-wave stats for the admin info page; may be nil in tests.
+	// Worker предоставляет live check-wave stats для страницы info админки; может быть nil в тестах.
 	Worker *worker.MonitorWorker
 }
 
-// NewHandler creates a new Handler instance.
-// db is the GORM handle for request handlers.
-// tmpl is the parsed HTML template set.
-// cfg is application configuration.
-// monitorWorker is the background checker used for live queue metrics; may be nil.
+// NewHandler создаёт новый экземпляр Handler.
+// db — GORM handle для обработчиков запросов.
+// tmpl — набор распарсенных HTML-шаблонов.
+// cfg — конфигурация приложения.
+// monitorWorker — фоновый checker для live queue metrics; может быть nil.
 func NewHandler(db *gorm.DB, tmpl *template.Template, cfg *config.Config, monitorWorker *worker.MonitorWorker) *Handler {
 	return &Handler{DB: db, Templates: tmpl, Config: cfg, Worker: monitorWorker}
 }

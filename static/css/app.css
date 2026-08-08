@@ -132,7 +132,7 @@
     font-weight: 800;
 }
 
-/* Shared palette for /admin/info charts — muted, readable on light cards. */
+/* Общая палитра для графиков /admin/info — приглушённая, читаемая на светлых карточках. */
 :root {
     --info-color-up: #1f7a54;
     --info-color-down: #b33b3b;

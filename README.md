@@ -1,100 +1,100 @@
 # Go Uptime
 
-HTTP/HTTPS uptime monitoring: periodic checks, downtime incidents, check history (heartbeats), and alerts via Telegram and SMTP.
+Сервис мониторинга доступности HTTP/HTTPS URL: периодические проверки, инциденты простоя, история проверок (heartbeats) и уведомления в Telegram и по SMTP.
 
-Admin UI built with Gin and Bootstrap. A background worker probes monitors and stores results in PostgreSQL.
+Админ-панель на Gin + Bootstrap. Фоновый worker проверяет мониторы и пишет результаты в PostgreSQL.
 
-Русская версия: [README.ru.md](README.ru.md)
+English version: [README.en.md](README.en.md)
 
-## Features
+## Возможности
 
-- HTTP/HTTPS URL monitoring with configurable intervals (global and per monitor)
-- Up/down status, response time, and check history
-- Downtime incidents that resolve automatically when the target recovers
-- Status-change notifications: Telegram (Shoutrrr) and email (SMTP)
-- Admin panel: dashboard, users, monitors, heartbeats, incidents, settings, logs
-- Info page with live worker metrics (concurrency, notify queue)
-- CLI for migrations, users, and database maintenance
-- Goose migrations (not applied automatically on startup)
-- Playwright e2e tests and Go unit/integration tests
+- Мониторинг HTTP/HTTPS URL с настраиваемым интервалом (глобально и на монитор)
+- Статус up/down, время ответа, история проверок
+- Инциденты простоя с автоматическим разрешением при восстановлении
+- Уведомления при смене статуса: Telegram (Shoutrrr) и email (SMTP)
+- Админ-панель: дашборд, пользователи, мониторы, heartbeats, инциденты, настройки, логи
+- Страница Info с метриками worker (concurrency, очередь уведомлений)
+- CLI для миграций, пользователей и служебных операций с БД
+- Goose-миграции (не запускаются автоматически при старте)
+- E2E на Playwright, unit/integration-тесты на Go
 
-## Requirements
+## Требования
 
 - Go 1.25+
 - PostgreSQL 16+
-- Docker and Docker Compose (optional)
-- Node.js 20+ (Playwright only)
+- Docker и Docker Compose (опционально)
+- Node.js 20+ (только для Playwright)
 
-## Quick start (local)
+## Быстрый старт (локально)
 
-1. Copy the example env file and set secrets:
+1. Скопируйте конфиг и задайте секреты:
 
 ```sh
 cp .env.example .env
 ```
 
-Required: `GO_UPTIME_SESSION_SECRET`, `GO_UPTIME_DATABASE_PASSWORD`.
+Обязательные переменные: `GO_UPTIME_SESSION_SECRET`, `GO_UPTIME_DATABASE_PASSWORD`.
 
-2. Start PostgreSQL (local or Docker) and align `.env` with the database.
+2. Поднимите PostgreSQL (локально или через Docker) и убедитесь, что параметры в `.env` совпадают с БД.
 
-3. Apply migrations and create a user:
+3. Примените миграции и создайте пользователя:
 
 ```sh
 make migrate
 go run . db-users-seed   # admin / admin
 ```
 
-4. Start the server:
+4. Запустите сервер:
 
 ```sh
 make server
 ```
 
-Open http://localhost:8080 — it redirects to `/admin/`.
+Откройте http://localhost:8080 — редирект на `/admin/`.
 
-## Configuration
+## Конфигурация
 
-Settings are loaded from the environment (and from `.env` via `godotenv`). See [`.env.example`](.env.example).
+Конфиг читается из окружения (и из `.env` через `godotenv`). Пример: [`.env.example`](.env.example).
 
-| Variable | Description | Default |
+| Переменная | Описание | По умолчанию |
 |---|---|---|
-| `GO_UPTIME_ENVIRONMENT` | `development` / other | `development` |
-| `GO_UPTIME_HTTP_PORT` | HTTP port | `8080` |
-| `GO_UPTIME_SESSION_SECRET` | Cookie session secret | required |
-| `GO_UPTIME_SESSION_SECURE` | Secure cookie flag (defaults to `true` outside development if unset) | `false` in `.env.example` |
-| `GO_UPTIME_INCIDENT_RETENTION_DAYS` | How long resolved incidents are kept | `90` |
-| `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Cap of resolved incidents per monitor | `100` |
-| `GO_UPTIME_CHECK_CONCURRENCY` | Max concurrent HTTP checks | `150` |
-| `GO_UPTIME_DATABASE_*` | Host, port, user, password, database name, sslmode | see `.env.example` |
-| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Test REST API for e2e (development only) | `false` |
-| `GO_UPTIME_TEST_DATABASE_NAME` | Database name for tests | `go-uptime-test` |
-| `GIN_MODE` | Gin mode | `release` |
-| `LOG_LEVEL` | zerolog level | `info` |
+| `GO_UPTIME_ENVIRONMENT` | `development` / иное | `development` |
+| `GO_UPTIME_HTTP_PORT` | HTTP-порт | `8080` |
+| `GO_UPTIME_SESSION_SECRET` | Секрет cookie-сессии | обязателен |
+| `GO_UPTIME_SESSION_SECURE` | Secure-флаг cookie (вне development по умолчанию `true`, если не задан) | `false` в `.env.example` |
+| `GO_UPTIME_INCIDENT_RETENTION_DAYS` | Срок хранения закрытых инцидентов | `90` |
+| `GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR` | Лимит закрытых инцидентов на монитор | `100` |
+| `GO_UPTIME_CHECK_CONCURRENCY` | Максимум параллельных HTTP-проверок | `150` |
+| `GO_UPTIME_DATABASE_*` | Хост, порт, пользователь, пароль, имя БД, sslmode | см. `.env.example` |
+| `GO_UPTIME_ENABLE_PLAYWRIGHT_API` | Тестовый REST API для e2e (только development) | `false` |
+| `GO_UPTIME_TEST_DATABASE_NAME` | Имя БД для тестов | `go-uptime-test` |
+| `GIN_MODE` | Режим Gin | `release` |
+| `LOG_LEVEL` | Уровень zerolog | `info` |
 
-Notification channels (Telegram URL, SMTP) are configured in the admin UI under **Settings**.
+Уведомления (Telegram URL, SMTP) настраиваются в админке: **Settings**.
 
 ## Docker Compose
 
-### App only (external PostgreSQL on the `infra` network)
+### Только приложение (внешний PostgreSQL в сети `infra`)
 
-Requires PostgreSQL already running on the Docker network `infra` (for example from `~/r/sandbox/infra/postgres/`).
+Нужна уже запущенная PostgreSQL в Docker-сети `infra` (например, из `~/r/sandbox/infra/postgres/`).
 
 ```sh
 cp .env.example .env
-# set DB password and session secret in .env
+# в .env задайте пароль БД и session secret
 docker compose up -d --build
 ```
 
-The app listens on `${GO_UPTIME_HTTP_PORT:-8080}`. Run migrations manually:
+Приложение слушает `${GO_UPTIME_HTTP_PORT:-8080}`. Миграции выполните вручную:
 
 ```sh
 docker compose exec go-uptime ./go-uptime db-goose-migrate
 docker compose exec go-uptime ./go-uptime db-users-seed
 ```
 
-### Full stack (app + PostgreSQL)
+### Полный стек (приложение + PostgreSQL)
 
-For local development, CI, and e2e:
+Для локальной разработки, CI и e2e:
 
 ```sh
 docker compose -f docker-compose.with-infra.yml up -d --build
@@ -102,15 +102,15 @@ docker compose -f docker-compose.with-infra.yml run --rm app ./go-uptime db-goos
 docker compose -f docker-compose.with-infra.yml run --rm app ./go-uptime db-users-seed
 ```
 
-The app is available at http://localhost:18081.
+Приложение доступно на http://localhost:18081.
 
 ## CLI
 
 ```sh
-go run . server                 # HTTP server + worker
-go run . db-goose-migrate       # Goose migrations (preferred)
-go run . db-gorm-migrate        # GORM AutoMigrate (helper)
-go run . db-users-create        # create a user interactively
+go run . server                 # HTTP-сервер + worker
+go run . db-goose-migrate       # Goose-миграции (рекомендуется)
+go run . db-gorm-migrate        # GORM AutoMigrate (вспомогательно)
+go run . db-users-create        # создать пользователя интерактивно
 go run . db-users-seed          # admin/admin
 go run . db-users-show
 go run . db-users-delete-all
@@ -121,30 +121,30 @@ go run . db-drop-all-tables
 go run . db-execute-sql "SELECT 1"
 ```
 
-Alias: `go run . s` → `server`.
+Алиас: `go run . s` → `server`.
 
 ## Makefile
 
 ```sh
 make fmt        # gofmt
 make vet
-make lint-build # custom golangci-lint with NilAway (once)
-make lint       # ./custom-gcl run (builds binary if missing)
+make lint-build # кастомный golangci-lint с NilAway (один раз)
+make lint       # ./custom-gcl run (соберёт бинарник, если его нет)
 make test
 make build
 make migrate
 make server
 ```
 
-## Tests
+## Тесты
 
 ### Go
 
-Use a separate test database (`GO_UPTIME_TEST_DATABASE_NAME`, default `go-uptime-test`). Do not point tests at the development database.
+Нужна отдельная тестовая БД (`GO_UPTIME_TEST_DATABASE_NAME`, по умолчанию `go-uptime-test`). Не используйте рабочую БД разработки.
 
 ```sh
 make test
-# or
+# или
 go test ./...
 ```
 
@@ -157,37 +157,37 @@ npx playwright install --with-deps chromium
 npm test
 ```
 
-The script starts the stack from `docker-compose.with-infra.yml` with the Playwright API enabled and tears it down afterward.
+Скрипт поднимает стек из `docker-compose.with-infra.yml` с включённым Playwright API и после тестов останавливает его.
 
-## Project layout
+## Структура проекта
 
 ```text
 cmd/           CLI (Cobra)
-cli/           CLI command implementations
-config/        Configuration (envconfig)
-database/      DB connection and migrations
-handlers/      Gin HTTP handlers
-middlewares/   Auth, logging, rate limit
-models/        GORM models and data access
-worker/        Background HTTP checks and notifications
+cli/           Реализации CLI-команд
+config/        Конфигурация (envconfig)
+database/      Подключение к БД и миграции
+handlers/      HTTP-обработчики Gin
+middlewares/   Auth, логирование, rate limit
+models/        GORM-модели и доступ к данным
+worker/        Фоновые HTTP-проверки и уведомления
 internal/      applog, notify, cliutil
-server/        HTTP server bootstrap
+server/        Запуск HTTP-сервера
 migrations/    Goose SQL
 templates/     HTML (admin)
 static/        CSS/JS
 e2e/           Playwright
 ```
 
-## Security
+## Безопасность
 
-- Do not commit `.env` or real secrets.
-- Change `GO_UPTIME_SESSION_SECRET` and the database password before production.
-- After `db-users-seed`, change the `admin` password immediately.
-- Keep `GO_UPTIME_ENABLE_PLAYWRIGHT_API` disabled outside tests; it is refused unless `GO_UPTIME_ENVIRONMENT=development`.
-- Behind HTTPS set `GO_UPTIME_SESSION_SECURE=true` (or leave it unset outside development so it defaults on).
-- Prefer `GO_UPTIME_DATABASE_SSLMODE=require` (or stricter) when PostgreSQL is not on a private network.
-- The admin **Tools** section is available only when `GO_UPTIME_ENVIRONMENT=development`.
+- Не коммитьте `.env` и реальные секреты.
+- Смените `GO_UPTIME_SESSION_SECRET` и пароль БД перед продакшеном.
+- После `db-users-seed` сразу смените пароль `admin`.
+- `GO_UPTIME_ENABLE_PLAYWRIGHT_API` оставляйте выключенным вне тестов; флаг принимается только при `GO_UPTIME_ENVIRONMENT=development`.
+- За HTTPS ставьте `GO_UPTIME_SESSION_SECURE=true` (или не задавайте вне development — тогда Secure включается по умолчанию).
+- Для PostgreSQL не в private-сети предпочитайте `GO_UPTIME_DATABASE_SSLMODE=require` (или строже).
+- Раздел **Tools** в админке доступен только при `GO_UPTIME_ENVIRONMENT=development`.
 
-## License
+## Лицензия
 
-Private / internal project unless stated otherwise.
+Приватный / внутренний проект, если иное не указано отдельно.

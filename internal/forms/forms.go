@@ -1,5 +1,5 @@
-// Package forms holds HTTP/CLI request DTOs and structural validation.
-// Persistence models stay in package models; these types are not GORM entities.
+// Package forms содержит DTO HTTP/CLI запросов и структурную валидацию.
+// Модели персистентности остаются в пакете models; эти типы не являются сущностями GORM.
 package forms
 
 import (
@@ -19,6 +19,9 @@ var (
 	trans    ut.Translator
 )
 
+// init настраивает глобальный валидатор go-playground/validator для всех DTO пакета forms.
+// Теги validate:"..." на полях структур проверяются через validate.Struct (см. MonitorURLInput.Validate и аналоги).
+// Тег label:"..." подставляется в сообщения об ошибках вместо имени поля Go.
 func init() {
 	validate = validator.New()
 
@@ -30,6 +33,7 @@ func init() {
 		return fld.Name
 	})
 
+	// Кастомные правила: monitor_url — только http/https; telegram_shoutrrr_url — префикс telegram:// (пустая строка допустима).
 	_ = validate.RegisterValidation("monitor_url", validateMonitorURL)
 	_ = validate.RegisterValidation("telegram_shoutrrr_url", validateTelegramShoutrrrURL)
 
@@ -39,29 +43,31 @@ func init() {
 	_ = en_translations.RegisterDefaultTranslations(validate, trans)
 }
 
-// validateTelegramShoutrrrURL checks that the string is a non-empty Shoutrrr URL for Telegram.
-// fl is the validator field level for the Telegram URL string being checked.
+// validateTelegramShoutrrrURL проверяет, что строка — непустой Shoutrrr URL для Telegram.
+// fl — уровень поля валидатора для проверяемой строки Telegram URL.
 func validateTelegramShoutrrrURL(fl validator.FieldLevel) bool {
 	raw := strings.TrimSpace(fl.Field().String())
 	if raw == "" {
+		// Пустой URL допустим — Telegram-канал необязателен.
 		return true
 	}
 	return strings.HasPrefix(strings.ToLower(raw), "telegram://")
 }
 
-// validateMonitorURL checks that the URL uses the http or https scheme.
-// fl is the validator field level for the monitor URL string being checked.
+// validateMonitorURL проверяет, что URL использует схему http или https.
+// fl — уровень поля валидатора для проверяемой строки URL монитора.
 func validateMonitorURL(fl validator.FieldLevel) bool {
 	raw := fl.Field().String()
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return false
 	}
+	// Только http/https — не file:, javascript: и т.д.
 	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
-// FormatValidationError converts validator errors into a human-readable string.
-// err is the error returned by a Validate method or validate.Struct.
+// FormatValidationError преобразует ошибки валидатора в человекочитаемую строку.
+// err — ошибка, возвращённая методом Validate или validate.Struct.
 func FormatValidationError(err error) string {
 	var validationErrors validator.ValidationErrors
 	if !errors.As(err, &validationErrors) {
@@ -70,6 +76,7 @@ func FormatValidationError(err error) string {
 
 	messages := make([]string, 0, len(validationErrors))
 	for _, fieldErr := range validationErrors {
+		// Translate использует label:"..." из тегов struct.
 		messages = append(messages, fieldErr.Translate(trans))
 	}
 	return strings.Join(messages, "; ")

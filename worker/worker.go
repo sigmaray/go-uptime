@@ -1,4 +1,4 @@
-// Package worker performs background HTTP checks of monitored URLs.
+// Package worker выполняет фоновые HTTP-проверки отслеживаемых URL.
 package worker
 
 import (
@@ -14,94 +14,96 @@ import (
 	"gorm.io/gorm"
 )
 
-// DefaultCheckConcurrency is used when config omits or sets an invalid concurrency value.
+// DefaultCheckConcurrency используется, когда config не задаёт или задаёт некорректное значение concurrency.
 const DefaultCheckConcurrency = 150
 
-// notifyQueueSize is the buffered capacity for async status-change alerts.
+// notifyQueueSize — размер буфера для асинхронных оповещений об изменении статуса.
 const notifyQueueSize = 256
 
-// resultQueueSize is the buffered capacity for completed checks waiting on DB flush.
+// resultQueueSize — размер буфера для завершённых проверок, ожидающих flush в БД.
 const resultQueueSize = 2048
 
-// Stats is a point-in-time snapshot of live monitor-check and notify-queue metrics.
+// Stats — снимок метрик проверок мониторов и очереди notify на текущий момент.
 type Stats struct {
-	// DueThisWave is how many claimed monitors have not finished probing yet.
+	// DueThisWave — сколько захваченных мониторов ещё не завершили проверку.
 	DueThisWave int
-	// InFlight is how many HTTP checks are executing right now.
+	// InFlight — сколько HTTP-проверок выполняется прямо сейчас.
 	InFlight int
-	// WaitingForSlot is how many claimed monitors still wait for a concurrency slot.
+	// WaitingForSlot — сколько захваченных мониторов всё ещё ждут слота concurrency.
 	WaitingForSlot int
-	// MaxConcurrency is the configured concurrent HTTP check limit.
+	// MaxConcurrency — настроенный лимит одновременных HTTP-проверок.
 	MaxConcurrency int
-	// NotifyQueued is how many status-change alerts sit in the notify channel.
+	// NotifyQueued — сколько оповещений об изменении статуса находится в channel notify.
 	NotifyQueued int
-	// NotifyCapacity is the notify channel buffer size.
+	// NotifyCapacity — размер буфера channel notify.
 	NotifyCapacity int
-	// ResultQueued is completed checks waiting to persist (channel plus in-memory batch leftovers).
+	// ResultQueued — завершённые проверки, ожидающие сохранения (channel плюс остатки batch в памяти).
 	ResultQueued int
-	// ResultCapacity is the persist channel buffer size.
+	// ResultCapacity — размер буфера channel persist.
 	ResultCapacity int
 }
 
-// checkResult represents the outcome of a single HTTP check that will be batched into the DB.
+// checkResult представляет результат одной HTTP-проверки для batch-записи в БД.
 type checkResult struct {
-	// monitor is the monitor_urls row snapshot taken when the probe was claimed.
+	// monitor — снимок строки monitor_urls на момент захвата проверки.
 	monitor models.MonitorURL
-	// isUp is the probe availability result.
+	// isUp — результат доступности проверки.
 	isUp bool
-	// errMsg is the probe error text; empty when the probe succeeded.
+	// errMsg — текст ошибки проверки; пустой при успешной проверке.
 	errMsg string
-	// elapsed is the probe duration in milliseconds; nil when unknown.
+	// elapsed — длительность проверки в миллисекундах; nil, если неизвестна.
 	elapsed *int
-	// persistAttempts counts how many times this result was re-queued after a failed flush.
+	// persistAttempts — сколько раз результат был повторно поставлен в очередь после неудачного flush.
 	persistAttempts int
 }
 
-// MonitorWorker periodically checks URLs from the database.
+// MonitorWorker периодически проверяет URL из базы данных.
 type MonitorWorker struct {
 	db               *gorm.DB
 	cfg              *config.Config
 	client           *http.Client
 	checkConcurrency int
-	// checkSem limits concurrent HTTP probes across overlapping claim waves.
+	// checkSem ограничивает число одновременных HTTP-проверок между перекрывающимися волнами claim.
 	checkSem chan struct{}
-	// notifyJobs buffers status-change alerts to be sent via external channels (e.g. Telegram/SMTP).
+	// notifyJobs буферизует оповещения об изменении статуса для отправки через внешние channel (например Telegram/SMTP).
 	notifyJobs chan notifyJob
-	// resultJobs buffers completed HTTP checks waiting to be persisted to the database in a batch.
+	// resultJobs буферизует завершённые HTTP-проверки для batch-сохранения в БД.
 	resultJobs chan checkResult
-	// notifySender delivers one alert; nil means the default Shoutrrr path.
+	// notifySender доставляет одно оповещение; nil означает путь Shoutrrr по умолчанию.
 	notifySender func(monitor models.MonitorURL, isUp bool, errMsg string)
 
 	stop            chan struct{}
 	loopDone        chan struct{}
 	notifyDone      chan struct{}
 	maintenanceDone chan struct{}
-	// batchDone is closed when the batchResultsLoop goroutine fully exits.
+	// batchDone закрывается, когда goroutine batchResultsLoop полностью завершилась.
 	batchDone chan struct{}
-	// wavesWG tracks in-flight dispatched probe goroutines so Stop can drain them.
+	// wavesWG отслеживает запущенные goroutine проверок, чтобы Stop мог дождаться их завершения.
 	wavesWG  sync.WaitGroup
 	started  atomic.Bool
 	stopOnce sync.Once
-	// paused skips due-monitor checks and maintenance while leaving Running() true.
-	// Used by the Playwright test API so e2e clears do not race in-flight HTTP checks.
+	// paused пропускает проверки due-мониторов и maintenance, оставляя Running() true.
+	// Используется Playwright test API, чтобы e2e-очистки не гонялись с выполняющимися HTTP-проверками.
 	paused atomic.Bool
 
-	// waveDue is how many claimed monitors have not finished probing yet.
+	// waveDue — сколько захваченных мониторов ещё не завершили проверку.
 	waveDue atomic.Int64
-	// waveStarted counts monitors that have acquired a concurrency slot and not finished.
+	// waveStarted считает мониторы, получившие слот concurrency и ещё не завершившие проверку.
 	waveStarted atomic.Int64
-	// inFlight counts HTTP checks currently executing.
+	// inFlight считает выполняющиеся HTTP-проверки.
 	inFlight atomic.Int64
-	// persistBacklog is how many completed checks sit in the batch loop awaiting a successful DB flush.
+	// persistBacklog — сколько завершённых проверок ждут успешного flush в batch loop.
 	persistBacklog atomic.Int64
 }
 
-// New creates a new background monitoring worker instance.
-// db is the GORM handle used to load monitors and persist check results.
-// cfg supplies retention settings and the maximum number of concurrent HTTP checks.
+// New создаёт новый экземпляр фонового worker мониторинга.
+// db — GORM-подключение для загрузки мониторов и сохранения результатов проверок.
+// cfg задаёт настройки retention и максимальное число одновременных HTTP-проверок.
 func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
+	// Берём дефолтный лимит параллельных HTTP-проверок.
 	concurrency := DefaultCheckConcurrency
 	if cfg != nil && cfg.CheckConcurrency > 0 {
+		// Явное значение из config перекрывает дефолт.
 		concurrency = cfg.CheckConcurrency
 	}
 
@@ -109,25 +111,31 @@ func New(db *gorm.DB, cfg *config.Config) *MonitorWorker {
 		db:               db,
 		cfg:              cfg,
 		checkConcurrency: concurrency,
-		checkSem:         make(chan struct{}, concurrency),
-		client:           urlcheck.NewClient(concurrency),
-		notifyJobs:       make(chan notifyJob, notifyQueueSize),
-		resultJobs:       make(chan checkResult, resultQueueSize),
-		stop:             make(chan struct{}),
-		loopDone:         make(chan struct{}),
-		notifyDone:       make(chan struct{}),
-		maintenanceDone:  make(chan struct{}),
-		batchDone:        make(chan struct{}),
+		// Semaphore с ёмкостью = concurrency ограничивает in-flight HTTP между волнами.
+		checkSem: make(chan struct{}, concurrency),
+		// HTTP-клиент с тем же лимитом, чтобы transport не открывал лишние соединения.
+		client: urlcheck.NewClient(concurrency),
+		// Буферизованные channel — горутины проверок не блокируются на persist/notify.
+		notifyJobs: make(chan notifyJob, notifyQueueSize),
+		resultJobs: make(chan checkResult, resultQueueSize),
+		// stop закрывается один раз в Stop(); done-channel сигнализируют о выходе goroutine.
+		stop:            make(chan struct{}),
+		loopDone:        make(chan struct{}),
+		notifyDone:      make(chan struct{}),
+		maintenanceDone: make(chan struct{}),
+		batchDone:       make(chan struct{}),
 	}
 }
 
-// Running reports whether the monitor check loop is active and has not been stopped.
-// It returns false for a nil worker, before Start, and after Stop begins shutting down.
-// A paused worker still reports running so /health stays healthy during e2e.
+// Running сообщает, активен ли цикл проверки мониторов и не был ли он остановлен.
+// Возвращает false для nil worker, до Start и после начала остановки через Stop.
+// Worker на паузе всё ещё считается running, чтобы /health оставался healthy во время e2e.
 func (w *MonitorWorker) Running() bool {
+	// nil или ещё не вызван Start — worker не активен.
 	if w == nil || !w.started.Load() {
 		return false
 	}
+	// Закрытый stop означает, что Stop уже начал graceful shutdown.
 	select {
 	case <-w.stop:
 		return false
@@ -136,39 +144,45 @@ func (w *MonitorWorker) Running() bool {
 	}
 }
 
-// Pause stops scheduling new monitor checks and maintenance waves.
-// In-flight checks from a wave that already started are not cancelled.
+// Pause прекращает планирование новых проверок мониторов и волн maintenance.
+// Уже запущенные проверки из начавшейся волны не отменяются.
 func (w *MonitorWorker) Pause() {
 	if w == nil {
 		return
 	}
+	// Атомарный флаг: runDueMonitors и maintenance читают его без mutex.
 	w.paused.Store(true)
 }
 
-// Resume allows the check loop to schedule monitor checks again after Pause.
+// Resume снова разрешает циклу проверок планировать проверки мониторов после Pause.
 func (w *MonitorWorker) Resume() {
 	if w == nil {
 		return
 	}
+	// Снимаем паузу — следующий tick снова захватит due-мониторы.
 	w.paused.Store(false)
 }
 
-// Paused reports whether new check waves are currently suppressed.
+// Paused сообщает, подавлено ли сейчас планирование новых волн проверок.
 func (w *MonitorWorker) Paused() bool {
 	return w != nil && w.paused.Load()
 }
 
-// Stats returns live check-wave, persist-queue, and notification-queue counters for ops pages.
+// Stats возвращает счётчики волн проверок, очереди persist и очереди уведомлений для ops-страниц.
 func (w *MonitorWorker) Stats() Stats {
 	if w == nil {
 		return Stats{}
 	}
 
+	// waveDue — все захваченные, но ещё не завершившие enqueue.
 	due := int(w.waveDue.Load())
+	// waveStarted — уже получили слот semaphore и выполняют HTTP.
 	started := int(w.waveStarted.Load())
 	inFlight := int(w.inFlight.Load())
+	// Остальные ждут свободного слота в checkSem.
 	waiting := due - started
 	if waiting < 0 {
+		// Защита от рассинхрона счётчиков при гонках defer.
 		waiting = 0
 	}
 
@@ -179,46 +193,60 @@ func (w *MonitorWorker) Stats() Stats {
 		MaxConcurrency: w.checkConcurrency,
 		NotifyQueued:   len(w.notifyJobs),
 		NotifyCapacity: notifyQueueSize,
+		// persistBacklog — batch в памяти batch loop, ещё не записанный в БД.
 		ResultQueued:   len(w.resultJobs) + int(w.persistBacklog.Load()),
 		ResultCapacity: cap(w.resultJobs),
 	}
 }
 
-// Start runs the check loop, batch writer, maintenance, and notification sender.
+// Start запускает цикл проверок, batch writer, maintenance и отправку уведомлений.
 func (w *MonitorWorker) Start() {
+	// Повторный Start безопасно игнорируется — CAS защищает от двойного запуска goroutine.
 	if !w.started.CompareAndSwap(false, true) {
 		return
 	}
+	// Одноразовый backfill uptime при пустой stat_minutely (апгрейд без миграции данных).
 	go w.backfillUptimeStatsIfNeeded()
+	// Асинхронная доставка Telegram/SMTP — не блокирует hot path проверок.
 	go w.notifyLoop()
+	// Batch writer: собирает resultJobs и пишет в PostgreSQL пакетами.
 	go w.batchResultsLoop()
+	// Retention/prune раз в минуту, отдельно от секундного scheduling.
 	go w.maintenanceLoop()
+	// Основной цикл: раз в секунду claim due-мониторов и dispatch HTTP.
 	go w.loop()
 }
 
-// Stop stops the check loop, drains queued results and notifications, then returns.
+// Stop останавливает цикл проверок, сливает очереди результатов и уведомлений, затем возвращается.
 func (w *MonitorWorker) Stop() {
 	w.stopOnce.Do(func() {
 		if !w.started.Load() {
 			return
 		}
+		// Сигнал всем goroutine: прекратить планирование новой работы.
 		close(w.stop)
+		// Ждём loop: он дождётся wavesWG и выйдет.
 		<-w.loopDone
+		// Maintenance тоже слушает stop и завершится сам.
 		<-w.maintenanceDone
+		// Закрываем resultJobs — batch loop сольёт остаток и закроет batchDone.
 		close(w.resultJobs)
 		<-w.batchDone
+		// После persist закрываем notify и ждём доставки уже поставленных job.
 		close(w.notifyJobs)
 		<-w.notifyDone
 	})
 }
 
-// loop claims due monitors on a one-second ticker until stop is closed.
+// loop захватывает due-мониторы по ticker раз в секунду, пока не закрыт stop.
 func (w *MonitorWorker) loop() {
 	defer close(w.loopDone)
 
+	// Раз в секунду — компромисс между latency due-мониторов и нагрузкой на БД claim.
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	// Первый claim сразу при старте, не ждём первого tick.
 	w.runDueMonitors()
 
 	for {
@@ -226,7 +254,7 @@ func (w *MonitorWorker) loop() {
 		case <-ticker.C:
 			w.runDueMonitors()
 		case <-w.stop:
-			// Wait for probes already dispatched so resultJobs is not closed early.
+			// Ждём уже запущенные проверки, чтобы resultJobs не закрыли преждевременно.
 			w.wavesWG.Wait()
 			return
 		}

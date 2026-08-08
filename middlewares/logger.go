@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ZerologLogger logs HTTP requests through zerolog.
+// ZerologLogger логирует HTTP-запросы через zerolog.
 func ZerologLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -23,6 +23,7 @@ func ZerologLogger() gin.HandlerFunc {
 		status := c.Writer.Status()
 		switch {
 		case len(c.Errors) > 0:
+			// Handler явно добавил ошибку через c.Error().
 			dispatchRequestLog(log.Error().Err(c.Errors.Last()), c, path, query, latency)
 		case status >= 500:
 			dispatchRequestLog(log.Error(), c, path, query, latency)
@@ -34,11 +35,11 @@ func ZerologLogger() gin.HandlerFunc {
 	}
 }
 
-// dispatchRequestLog writes the shared HTTP request fields and finishes the zerolog event.
-// e is the level-specific event already started by the caller.
-// c is the Gin context for status, method, and client IP.
-// path and query are the request URL parts captured before handlers ran.
-// latency is how long the request took.
+// dispatchRequestLog записывает общие поля HTTP-запроса и завершает событие zerolog.
+// e — событие нужного уровня, уже начатое вызывающим кодом.
+// c — контекст Gin для status, method и IP клиента.
+// path и query — части URL запроса, зафиксированные до выполнения handlers.
+// latency — длительность обработки запроса.
 func dispatchRequestLog(e *zerolog.Event, c *gin.Context, path, query string, latency time.Duration) {
 	e.Int("status", c.Writer.Status()).
 		Str("method", c.Request.Method).
@@ -49,11 +50,13 @@ func dispatchRequestLog(e *zerolog.Event, c *gin.Context, path, query string, la
 		Msg(c.Request.Method + " " + path)
 }
 
-// ErrorCapture stores Gin errors in application memory.
+// ErrorCapture сохраняет ошибки Gin в памяти приложения.
+// Только c.Errors из c.Error() в handlers; паники перехватывает gin.Recovery(), сюда не попадают.
 func ErrorCapture() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
 		for _, err := range c.Errors {
+			// Путь запроса — контекст для страницы /admin/errors.
 			applog.AddError(err.Error(), c.Request.URL.Path)
 		}
 	}

@@ -10,23 +10,23 @@ import (
 )
 
 const (
-	// SettingNotificationTelegramURL is the app_settings key for the Telegram Shoutrrr URL.
+	// SettingNotificationTelegramURL — ключ app_settings для Telegram Shoutrrr URL.
 	SettingNotificationTelegramURL = "notification_telegram_url"
-	// SettingNotificationSMTPHost is the app_settings key for the SMTP host.
+	// SettingNotificationSMTPHost — ключ app_settings для SMTP-хоста.
 	SettingNotificationSMTPHost = "notification_smtp_host"
-	// SettingNotificationSMTPPort is the app_settings key for the SMTP port.
+	// SettingNotificationSMTPPort — ключ app_settings для SMTP-порта.
 	SettingNotificationSMTPPort = "notification_smtp_port"
-	// SettingNotificationSMTPUser is the app_settings key for the SMTP username.
+	// SettingNotificationSMTPUser — ключ app_settings для имени пользователя SMTP.
 	SettingNotificationSMTPUser = "notification_smtp_user"
-	// SettingNotificationSMTPPassword is the app_settings key for the SMTP password.
+	// SettingNotificationSMTPPassword — ключ app_settings для пароля SMTP.
 	SettingNotificationSMTPPassword = "notification_smtp_password"
-	// SettingNotificationSMTPFrom is the app_settings key for the SMTP sender address.
+	// SettingNotificationSMTPFrom — ключ app_settings для адреса отправителя SMTP.
 	SettingNotificationSMTPFrom = "notification_smtp_from"
-	// SettingNotificationSMTPTo is the app_settings key for the SMTP recipient address.
+	// SettingNotificationSMTPTo — ключ app_settings для адреса получателя SMTP.
 	SettingNotificationSMTPTo = "notification_smtp_to"
 )
 
-// NotificationSettings holds notification channel parameters from app_settings.
+// NotificationSettings хранит параметры каналов уведомлений из app_settings.
 type NotificationSettings struct {
 	TelegramURL  string
 	SMTPHost     string
@@ -37,20 +37,20 @@ type NotificationSettings struct {
 	SMTPTo       string
 }
 
-// TelegramConfigured reports whether a Telegram Shoutrrr URL is configured.
+// TelegramConfigured сообщает, настроен ли Telegram Shoutrrr URL.
 func (s NotificationSettings) TelegramConfigured() bool {
 	return strings.TrimSpace(s.TelegramURL) != ""
 }
 
-// SMTPConfigured reports whether required SMTP parameters are set.
+// SMTPConfigured сообщает, заданы ли обязательные параметры SMTP.
 func (s NotificationSettings) SMTPConfigured() bool {
 	return strings.TrimSpace(s.SMTPHost) != "" &&
 		s.SMTPPort > 0 &&
 		strings.TrimSpace(s.SMTPTo) != ""
 }
 
-// LoadNotificationSettings reads notification settings from app_settings.
-// db is the GORM connection to PostgreSQL.
+// LoadNotificationSettings читает настройки уведомлений из app_settings.
+// db — подключение GORM к PostgreSQL.
 func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 	keys := []string{
 		SettingNotificationTelegramURL,
@@ -67,6 +67,7 @@ func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 		return NotificationSettings{}, err
 	}
 
+	// Собираем map key→value для удобного доступа по константам Setting*.
 	values := make(map[string]string, len(rows))
 	for _, row := range rows {
 		values[row.Key] = row.Value
@@ -74,6 +75,7 @@ func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 
 	port, _ := strconv.Atoi(values[SettingNotificationSMTPPort])
 	if port <= 0 {
+		// Порт не задан или невалиден — дефолт submission port 587.
 		port = 587
 	}
 
@@ -88,11 +90,12 @@ func LoadNotificationSettings(db *gorm.DB) (NotificationSettings, error) {
 	}, nil
 }
 
-// SaveNotificationSettings saves notification settings to app_settings.
-// db is the GORM connection; settings holds the new values; keepSMTPPassword retains
-// the existing password when settings.SMTPPassword is an empty string.
+// SaveNotificationSettings сохраняет настройки уведомлений в app_settings.
+// db — подключение GORM; settings содержит новые значения; keepSMTPPassword
+// сохраняет существующий пароль, когда settings.SMTPPassword — пустая строка.
 func SaveNotificationSettings(db *gorm.DB, settings NotificationSettings, keepSMTPPassword bool) error {
 	if keepSMTPPassword && strings.TrimSpace(settings.SMTPPassword) == "" {
+		// Форма не отправила пароль — оставляем сохранённый в БД (masked field в UI).
 		existing, err := LoadNotificationSettings(db)
 		if err != nil {
 			return err
@@ -112,6 +115,7 @@ func SaveNotificationSettings(db *gorm.DB, settings NotificationSettings, keepSM
 
 	for key, value := range entries {
 		setting := AppSetting{Key: key, Value: value}
+		// db.Save — upsert по primary key (key).
 		if err := db.Save(&setting).Error; err != nil {
 			return err
 		}
@@ -120,13 +124,14 @@ func SaveNotificationSettings(db *gorm.DB, settings NotificationSettings, keepSM
 	return nil
 }
 
-// BuildSMTPShoutrrrURL builds a Shoutrrr SMTP URL from individual settings fields.
-// settings holds SMTP parameters; subject is the email subject (may be empty).
+// BuildSMTPShoutrrrURL формирует Shoutrrr SMTP URL из отдельных полей настроек.
+// settings содержит параметры SMTP; subject — тема письма (может быть пустой).
 func BuildSMTPShoutrrrURL(settings NotificationSettings, subject string) (string, error) {
 	if !settings.SMTPConfigured() {
 		return "", fmt.Errorf("smtp settings are incomplete")
 	}
 
+	// Shoutrrr ожидает credentials в userinfo URL: smtp://user:pass@host:port?...
 	userInfo := url.UserPassword(settings.SMTPUser, settings.SMTPPassword)
 	serviceURL := &url.URL{
 		Scheme: "smtp",

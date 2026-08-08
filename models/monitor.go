@@ -8,40 +8,43 @@ import (
 	"gorm.io/gorm"
 )
 
-// MonitorCheckIntervalSeconds returns the effective check interval for a monitor.
-// monitor is the monitored URL whose optional override is inspected.
-// globalSeconds is the default interval from app_settings.
+// MonitorCheckIntervalSeconds возвращает эффективный интервал проверки для монитора.
+// monitor — отслеживаемый URL, у которого проверяется необязательное переопределение.
+// globalSeconds — интервал по умолчанию из app_settings.
 func MonitorCheckIntervalSeconds(monitor MonitorURL, globalSeconds int) int {
 	if monitor.CheckIntervalSeconds != nil && *monitor.CheckIntervalSeconds >= 10 {
+		// У монитора своё переопределение — минимум 10 секунд.
 		return *monitor.CheckIntervalSeconds
 	}
 	return globalSeconds
 }
 
-// DefaultMonitorName returns the site hostname from rawURL when no display name is provided.
-// rawURL is the monitor target URL used to derive a fallback name.
+// DefaultMonitorName возвращает имя хоста сайта из rawURL, если отображаемое имя не задано.
+// rawURL — URL цели мониторинга, используемый для получения резервного имени.
 func DefaultMonitorName(rawURL string) string {
 	trimmed := strings.TrimSpace(rawURL)
 	parsed, err := url.Parse(trimmed)
 	if err != nil || parsed.Host == "" {
+		// Невалидный URL — показываем как есть после trim.
 		return trimmed
 	}
 	return parsed.Host
 }
 
-// MonitorDisplayName returns the configured name or falls back to the URL hostname.
-// monitor is the monitored URL whose display name is resolved.
+// MonitorDisplayName возвращает настроенное имя или имя хоста URL по умолчанию.
+// monitor — отслеживаемый URL, для которого определяется отображаемое имя.
 func MonitorDisplayName(monitor MonitorURL) string {
 	name := strings.TrimSpace(monitor.Name)
 	if name != "" {
 		return name
 	}
+	// Пустое имя — fallback на hostname из URL.
 	return DefaultMonitorName(monitor.URL)
 }
 
-// ResolveMonitorName returns trimmed name or the default derived from rawURL.
-// name is the optional user-provided display name.
-// rawURL is used when name is empty.
+// ResolveMonitorName возвращает обрезанное name или значение по умолчанию, полученное из rawURL.
+// name — необязательное отображаемое имя, заданное пользователем.
+// rawURL используется, когда name пустое.
 func ResolveMonitorName(name, rawURL string) string {
 	trimmed := strings.TrimSpace(name)
 	if trimmed != "" {
@@ -50,9 +53,9 @@ func ResolveMonitorName(name, rawURL string) string {
 	return DefaultMonitorName(rawURL)
 }
 
-// SeedMonitorURLs creates demonstration URLs for monitoring.
-// db is the database handle used to insert missing seed rows.
-// It returns the number of newly created monitors and any persistence error.
+// SeedMonitorURLs создаёт демонстрационные URL для мониторинга.
+// db — дескриптор базы данных для вставки отсутствующих seed-строк.
+// Возвращает число вновь созданных мониторов и любую ошибку персистентности.
 func SeedMonitorURLs(db *gorm.DB) (int, error) {
 	seeds := []MonitorURL{
 		{Name: "Example.com", URL: "https://example.com"},
@@ -79,6 +82,7 @@ func SeedMonitorURLs(db *gorm.DB) (int, error) {
 	created := 0
 	for _, seed := range seeds {
 		var existing MonitorURL
+		// Идемпотентность: пропускаем URL, уже существующий в БД (unique по url).
 		err := db.Where("url = ?", seed.URL).First(&existing).Error
 		if err == nil {
 			continue

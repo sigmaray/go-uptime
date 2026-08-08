@@ -1,5 +1,5 @@
-# App only — connects to PostgreSQL on external Docker network `infra`.
-# Requires: ~/r/sandbox/infra/postgres/ running with network `infra`.
+# Только приложение — подключается к PostgreSQL во внешней Docker-сети `infra`.
+# Требуется: запущенный ~/r/sandbox/infra/postgres/ с сетью `infra`.
 #
 #   cp .env.example .env && $EDITOR .env
 #   docker compose up -d

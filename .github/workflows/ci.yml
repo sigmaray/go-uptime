@@ -1,3 +1,5 @@
+# CI go-uptime: lint → параллельно test/build → затем integration, e2e и проверка compose.
+# Триггеры: любой push и pull_request.
 name: CI
 
 on:
@@ -8,6 +10,7 @@ permissions:
   contents: read
 
 jobs:
+  # Статический анализ: gofmt, go vet, кастомный golangci-lint с NilAway.
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -15,23 +18,27 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
+          # Версия Go берётся из go.mod — совпадает с локальной и Docker.
           go-version-file: go.mod
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.7.2
 
       - name: Format check
+        # Пустой вывод gofmt -l = все файлы отформатированы.
         run: test -z "$(gofmt -l .)"
 
       - name: Vet
         run: go vet ./...
 
       - name: Build custom golangci-lint with NilAway
+        # Собирает ./custom-gcl по .custom-gcl.yml (NilAway не в стандартном бинарнике).
         run: golangci-lint custom
 
       - name: Lint
         run: ./custom-gcl run ./...
 
+  # Unit/integration Go-тесты против сервиса PostgreSQL в GitHub Actions.
   test:
     runs-on: ubuntu-latest
     needs: lint
@@ -49,6 +56,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      # Тесты создают/используют отдельную БД go-uptime-test (см. models/testdb_test.go).
       GO_UPTIME_TEST_DATABASE_NAME: go-uptime-test
       GO_UPTIME_SESSION_SECRET: test-secret
       GO_UPTIME_DATABASE_HOST: localhost
@@ -66,6 +74,7 @@ jobs:
       - name: Run Go tests
         run: go test ./...
 
+  # Проверка, что бинарник собирается.
   build:
     runs-on: ubuntu-latest
     needs: lint
@@ -79,6 +88,7 @@ jobs:
       - name: Build
         run: go build -o go-uptime .
 
+  # Полный Docker-стек: миграции, старт app, проверка /health на порту 18081.
   integration:
     runs-on: ubuntu-latest
     needs: build
@@ -98,6 +108,7 @@ jobs:
         run: docker compose -f docker-compose.with-infra.yml up -d app --wait
 
       - name: Check health endpoint
+        # До 30 с ждём готовности; при ошибке печатаем логи compose.
         run: |
           for i in $(seq 1 30); do
             if curl -sf http://localhost:18081/health; then
@@ -113,6 +124,7 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.with-infra.yml down -v
 
+  # Playwright e2e: поднимает свой стек через webServer (start-test-server.sh).
   e2e:
     runs-on: ubuntu-latest
     needs: build
@@ -136,10 +148,12 @@ jobs:
       - name: Run Playwright tests
         working-directory: e2e
         env:
+          # Имя тестовой БД для скрипта start-test-server.sh.
           GO_UPTIME_TEST_DATABASE_NAME: go-uptime-test
         run: npm test
 
       - name: Upload Playwright report
+        # Артефакт только при падении — HTML-отчёт Playwright для отладки.
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -147,6 +161,7 @@ jobs:
           path: e2e/playwright-report/
           retention-days: 7
 
+  # Проверка, что production compose (внешний postgres в сети infra) валиден.
   docker-infra:
     runs-on: ubuntu-latest
     needs: build

@@ -1,4 +1,4 @@
-// Package applog stores recent log entries, events, and errors in process memory.
+// Package applog хранит недавние записи логов, события и ошибки в памяти процесса.
 package applog
 
 import (
@@ -9,23 +9,23 @@ import (
 
 const maxEntries = 200
 
-// Entry is a single in-memory log record.
+// Entry — одна запись лога в памяти.
 type Entry struct {
 	Time    time.Time `json:"time"`
 	Level   string    `json:"level"`
 	Message string    `json:"message"`
-	// Fields is optional structured context embedded as JSON (object, array, or scalar).
+	// Fields — необязательный структурированный контекст в виде JSON (object, array или scalar).
 	Fields json.RawMessage `json:"fields,omitempty"`
 }
 
-// EventEntry is an application event (not an HTTP request).
+// EventEntry — событие приложения (не HTTP-запрос).
 type EventEntry struct {
 	Time     time.Time `json:"time"`
 	Category string    `json:"category"`
 	Message  string    `json:"message"`
 }
 
-// MonitorRequestEntry is a worker HTTP request to a monitored site.
+// MonitorRequestEntry — HTTP-запрос worker к мониторимому сайту.
 type MonitorRequestEntry struct {
 	Time           time.Time `json:"time"`
 	MonitorName    string    `json:"monitor_name"`
@@ -47,9 +47,9 @@ var (
 	requests  []MonitorRequestEntry
 )
 
-// AddLog appends a log entry to the in-memory ring buffer.
-// level is the log severity; message is the human-readable summary.
-// fields is optional context: valid JSON is stored as-is, plain text becomes a JSON string.
+// AddLog добавляет запись лога в кольцевой буфер в памяти.
+// level — уровень серьёзности; message — человекочитаемое описание.
+// fields — необязательный контекст: валидный JSON сохраняется как есть, обычный текст становится JSON-строкой.
 func AddLog(level, message, fields string) {
 	addLogEntry(Entry{
 		Time:    time.Now(),
@@ -65,7 +65,7 @@ func addLogEntry(entry Entry) {
 	logs = appendRing(logs, entry)
 }
 
-// AddEvent appends an application event to the ring buffer.
+// AddEvent добавляет событие приложения в кольцевой буфер.
 func AddEvent(category, message string) {
 	eventMu.Lock()
 	defer eventMu.Unlock()
@@ -76,9 +76,9 @@ func AddEvent(category, message string) {
 	})
 }
 
-// AddError appends an error-level record to the ring buffer.
-// message is the human-readable summary; fields is optional structured context
-// (valid JSON or plain text) shown on the admin errors page for investigation.
+// AddError добавляет запись уровня error в кольцевой буфер.
+// message — человекочитаемое описание; fields — необязательный структурированный контекст
+// (валидный JSON или обычный текст), показываемый на странице admin/errors для расследования.
 func AddError(message, fields string) {
 	addErrorEntry(Entry{
 		Time:    time.Now(),
@@ -88,14 +88,15 @@ func AddError(message, fields string) {
 	})
 }
 
-// EncodeFields converts optional context into JSON suitable for Entry.Fields.
-// raw is either valid JSON (object/array/scalar) or plain text; plain text is
-// wrapped as a JSON string so diagnostics can embed fields without escaping.
+// EncodeFields преобразует необязательный контекст в JSON, подходящий для Entry.Fields.
+// raw — либо валидный JSON (object/array/scalar), либо обычный текст; обычный текст
+// оборачивается в JSON-строку, чтобы диагностика могла встраивать fields без экранирования.
 func EncodeFields(raw string) json.RawMessage {
 	if raw == "" {
 		return nil
 	}
 	if json.Valid([]byte(raw)) {
+		// Уже валидный JSON — сохраняем как structured fields без перекодирования.
 		return json.RawMessage(raw)
 	}
 	encoded, err := json.Marshal(raw)
@@ -105,24 +106,25 @@ func EncodeFields(raw string) json.RawMessage {
 	return encoded
 }
 
-// addErrorEntry appends one error/warn record to the in-memory errors ring buffer.
-// entry is the fully populated log record to store for the admin errors page.
+// addErrorEntry добавляет одну запись error/warn в кольцевой буфер ошибок в памяти.
+// entry — полностью заполненная запись лога для страницы admin/errors.
 func addErrorEntry(entry Entry) {
 	errorMu.Lock()
 	defer errorMu.Unlock()
 	appErrors = appendRing(appErrors, entry)
 }
 
-// RecentLogs returns the most recent log entries (at most maxEntries), newest first.
+// RecentLogs возвращает самые новые записи логов (не более maxEntries), сначала новые.
 func RecentLogs() []Entry {
 	logMu.RLock()
 	defer logMu.RUnlock()
 	out := copyEntries(logs)
+	// Буфер хранит хронологический порядок append — для UI нужны сначала новые.
 	reverseEntries(out)
 	return out
 }
 
-// AddMonitorRequest stores a worker HTTP request to a monitored site in memory.
+// AddMonitorRequest сохраняет HTTP-запрос worker к мониторимому сайту в памяти.
 func AddMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
 	requestMu.Lock()
 	defer requestMu.Unlock()
@@ -137,7 +139,7 @@ func AddMonitorRequest(monitorName, url string, statusCode int, responseTimeMs i
 	})
 }
 
-// RecentEvents returns the most recent application events (at most maxEntries), newest first.
+// RecentEvents возвращает самые новые события приложения (не более maxEntries), сначала новые.
 func RecentEvents() []EventEntry {
 	eventMu.RLock()
 	defer eventMu.RUnlock()
@@ -146,7 +148,7 @@ func RecentEvents() []EventEntry {
 	return out
 }
 
-// RecentMonitorRequests returns the most recent monitor HTTP requests (at most maxEntries), newest first.
+// RecentMonitorRequests возвращает самые новые HTTP-запросы мониторов (не более maxEntries), сначала новые.
 func RecentMonitorRequests() []MonitorRequestEntry {
 	requestMu.RLock()
 	defer requestMu.RUnlock()
@@ -155,7 +157,7 @@ func RecentMonitorRequests() []MonitorRequestEntry {
 	return out
 }
 
-// RecentErrors returns the most recent error records (at most maxEntries), newest first.
+// RecentErrors возвращает самые новые записи ошибок (не более maxEntries), сначала новые.
 func RecentErrors() []Entry {
 	errorMu.RLock()
 	defer errorMu.RUnlock()
@@ -164,31 +166,31 @@ func RecentErrors() []Entry {
 	return out
 }
 
-// CountEvents returns how many application events are stored in memory.
+// CountEvents возвращает, сколько событий приложения хранится в памяти.
 func CountEvents() int64 {
 	eventMu.RLock()
 	defer eventMu.RUnlock()
 	return int64(len(events))
 }
 
-// CountErrors returns how many error records are stored in memory.
+// CountErrors возвращает, сколько записей ошибок хранится в памяти.
 func CountErrors() int64 {
 	errorMu.RLock()
 	defer errorMu.RUnlock()
 	return int64(len(appErrors))
 }
 
-// CountMonitorRequests returns how many monitor HTTP requests are stored in memory.
+// CountMonitorRequests возвращает, сколько HTTP-запросов мониторов хранится в памяти.
 func CountMonitorRequests() int64 {
 	requestMu.RLock()
 	defer requestMu.RUnlock()
 	return int64(len(requests))
 }
 
-// EventsPage returns one page of application events ordered newest first.
+// EventsPage возвращает одну страницу событий приложения, отсортированных от новых к старым.
 //
-// page is the one-based page number.
-// perPage is how many events each page contains.
+// page — номер страницы, начиная с 1.
+// perPage — сколько событий на странице.
 func EventsPage(page, perPage int) []EventEntry {
 	eventMu.RLock()
 	buf := copyEventEntries(events)
@@ -198,10 +200,10 @@ func EventsPage(page, perPage int) []EventEntry {
 	return slicePage(buf, page, perPage)
 }
 
-// ErrorsPage returns one page of error records ordered newest first.
+// ErrorsPage возвращает одну страницу записей ошибок, отсортированных от новых к старым.
 //
-// page is the one-based page number.
-// perPage is how many errors each page contains.
+// page — номер страницы, начиная с 1.
+// perPage — сколько ошибок на странице.
 func ErrorsPage(page, perPage int) []Entry {
 	errorMu.RLock()
 	buf := copyEntries(appErrors)
@@ -211,10 +213,10 @@ func ErrorsPage(page, perPage int) []Entry {
 	return slicePage(buf, page, perPage)
 }
 
-// MonitorRequestsPage returns one page of monitor HTTP requests ordered newest first.
+// MonitorRequestsPage возвращает одну страницу HTTP-запросов мониторов, отсортированных от новых к старым.
 //
-// page is the one-based page number.
-// perPage is how many requests each page contains.
+// page — номер страницы, начиная с 1.
+// perPage — сколько запросов на странице.
 func MonitorRequestsPage(page, perPage int) []MonitorRequestEntry {
 	requestMu.RLock()
 	buf := copyMonitorRequestEntries(requests)
@@ -224,7 +226,9 @@ func MonitorRequestsPage(page, perPage int) []MonitorRequestEntry {
 	return slicePage(buf, page, perPage)
 }
 
-// ClearAll removes all in-memory log buffers. Used by the Playwright test API.
+// ClearAll очищает все буферы логов в памяти. Используется Playwright test API.
+// Блокируем все mutex по порядку log→error→event→request; e2e сбрасывает состояние
+// перед сценарием, чтобы assertions не видели записи от предыдущих тестов.
 func ClearAll() {
 	logMu.Lock()
 	errorMu.Lock()
@@ -240,6 +244,8 @@ func ClearAll() {
 	logMu.Unlock()
 }
 
+// slicePage возвращает срез items для страницы page (1-based).
+// Вызывающий код уже развернул буфер «сначала новые» — страница 1 = самые свежие записи.
 func slicePage[T any](items []T, page, perPage int) []T {
 	if perPage < 1 {
 		perPage = 1
@@ -253,6 +259,7 @@ func slicePage[T any](items []T, page, perPage int) []T {
 	}
 	offset := (page - 1) * perPage
 	if offset >= total {
+		// Запрос страницы за пределами данных.
 		return nil
 	}
 	end := offset + perPage
@@ -262,16 +269,19 @@ func slicePage[T any](items []T, page, perPage int) []T {
 	return items[offset:end]
 }
 
+// appendRing добавляет запись в кольцевой буфер фиксированного размера maxEntries.
+// При переполнении отбрасываются самые старые элементы (хвост среза).
 func appendRing[T any](buf []T, entry T) []T {
 	buf = append(buf, entry)
 	if len(buf) > maxEntries {
+		// Кольцевой буфер: отрезаем старейшие записи с начала среза.
 		return buf[len(buf)-maxEntries:]
 	}
 	return buf
 }
 
-// copyEntries returns a deep copy of log/error entries so callers can mutate safely.
-// buf is the ring-buffer slice to clone; Fields byte slices are copied independently.
+// copyEntries возвращает глубокую копию записей логов/ошибок, чтобы вызывающий код мог безопасно изменять их.
+// buf — срез кольцевого буфера для клонирования; срезы Fields копируются независимо.
 func copyEntries(buf []Entry) []Entry {
 	out := make([]Entry, len(buf))
 	for i := range buf {

@@ -1,4 +1,4 @@
-// Package notify sends monitor status-change notifications via Shoutrrr.
+// Package notify отправляет уведомления об изменении статуса мониторов через Shoutrrr.
 package notify
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/nicholas-fedor/shoutrrr"
 )
 
-// MonitorStateChange describes a monitor availability change for notification.
+// MonitorStateChange описывает изменение доступности монитора для уведомления.
 type MonitorStateChange struct {
 	DisplayName string
 	URL         string
@@ -20,8 +20,8 @@ type MonitorStateChange struct {
 
 const testNotificationMessage = "Go Uptime test notification from Dev Tools."
 
-// SendTestTelegram sends a test message to Telegram.
-// settings holds system settings with the Shoutrrr URL.
+// SendTestTelegram отправляет тестовое сообщение в Telegram.
+// settings содержит системные настройки с Shoutrrr URL.
 func SendTestTelegram(settings models.NotificationSettings) error {
 	if !settings.TelegramConfigured() {
 		return fmt.Errorf("telegram is not configured")
@@ -29,8 +29,8 @@ func SendTestTelegram(settings models.NotificationSettings) error {
 	return shoutrrr.Send(settings.TelegramURL, testNotificationMessage)
 }
 
-// SendTestSMTP sends a test email via SMTP.
-// settings holds system SMTP settings.
+// SendTestSMTP отправляет тестовое письмо через SMTP.
+// settings содержит системные SMTP-настройки.
 func SendTestSMTP(settings models.NotificationSettings) error {
 	if !settings.SMTPConfigured() {
 		return fmt.Errorf("smtp is not configured")
@@ -42,9 +42,11 @@ func SendTestSMTP(settings models.NotificationSettings) error {
 	return shoutrrr.Send(smtpURL, testNotificationMessage)
 }
 
-// SendMonitorStateChange sends notifications through enabled channels.
-// settings holds system channel settings; monitor is the monitor with notify_* flags;
-// change describes the event.
+// SendMonitorStateChange отправляет уведомления через включённые каналы монитора.
+// Канал пропускается, если флаг monitor.Notify* выключен или канал не настроен в settings
+// (TelegramConfigured / SMTPConfigured) — это не ошибка, просто нет работы.
+// Ошибки разных каналов накапливаются; joinErrors склеивает их в одну строку через «; »,
+// чтобы worker мог залогировать частичный сбой (например, Telegram упал, SMTP прошёл).
 func SendMonitorStateChange(settings models.NotificationSettings, monitor models.MonitorURL, change MonitorStateChange) error {
 	message := formatMonitorMessage(change)
 	var errs []error
@@ -64,10 +66,11 @@ func SendMonitorStateChange(settings models.NotificationSettings, monitor models
 		}
 	}
 
+	// nil если все включённые каналы успешны или ни один не был активен.
 	return joinErrors(errs)
 }
 
-// formatMonitorMessage builds the notification text for a monitor status change.
+// formatMonitorMessage формирует текст уведомления об изменении статуса монитора.
 func formatMonitorMessage(change MonitorStateChange) string {
 	name := strings.TrimSpace(change.DisplayName)
 	if name == "" {
@@ -77,12 +80,13 @@ func formatMonitorMessage(change MonitorStateChange) string {
 		return fmt.Sprintf("Monitor %q (%s) is UP", name, change.URL)
 	}
 	if strings.TrimSpace(change.Error) == "" {
+		// DOWN без текста ошибки — только факт недоступности.
 		return fmt.Sprintf("Monitor %q (%s) is DOWN", name, change.URL)
 	}
 	return fmt.Sprintf("Monitor %q (%s) is DOWN: %s", name, change.URL, change.Error)
 }
 
-// monitorStateSubject returns the email subject for an SMTP notification.
+// monitorStateSubject возвращает тему письма для SMTP-уведомления.
 func monitorStateSubject(change MonitorStateChange) string {
 	name := strings.TrimSpace(change.DisplayName)
 	if name == "" {
@@ -94,7 +98,7 @@ func monitorStateSubject(change MonitorStateChange) string {
 	return fmt.Sprintf("Monitor DOWN: %s", name)
 }
 
-// joinErrors combines multiple send errors into one.
+// joinErrors объединяет несколько ошибок отправки в одну.
 func joinErrors(errs []error) error {
 	if len(errs) == 0 {
 		return nil
@@ -106,5 +110,6 @@ func joinErrors(errs []error) error {
 	for _, err := range errs {
 		parts = append(parts, err.Error())
 	}
+	// Несколько каналов упали — одна строка с разделителем «; ».
 	return fmt.Errorf("%s", strings.Join(parts, "; "))
 }

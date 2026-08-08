@@ -1,4 +1,4 @@
-// Package monitor contains business logic for creating and managing monitor URLs.
+// Package monitor содержит бизнес-логику создания и управления URL мониторов.
 package monitor
 
 import (
@@ -13,22 +13,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrMonitorURLExists is the conflict error string.
+// ErrMonitorURLExists — строка ошибки конфликта.
 const ErrMonitorURLExists = "A monitor with this URL already exists"
 
 const createVerifyConcurrency = 50
 
-// Service provides business logic for monitor URLs.
+// Service предоставляет бизнес-логику для URL мониторов.
 type Service struct {
 	db *gorm.DB
 }
 
-// NewService creates a new monitor service.
+// NewService создаёт новый сервис мониторов.
 func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
-// URLExistsMessage builds a user-facing conflict message for one or more URLs.
+// URLExistsMessage формирует пользовательское сообщение о конфликте для одного или нескольких URL.
 func URLExistsMessage(urls ...string) string {
 	cleaned := make([]string, 0, len(urls))
 	for _, u := range urls {
@@ -40,10 +40,11 @@ func URLExistsMessage(urls ...string) string {
 	if len(cleaned) == 0 {
 		return ErrMonitorURLExists
 	}
+	// Перечисляем конфликтующие URL в сообщении для bulk-create.
 	return fmt.Sprintf("%s: %s", ErrMonitorURLExists, strings.Join(cleaned, ", "))
 }
 
-// UnavailableMessage builds a user-facing error when verify-before-create finds unreachable sites.
+// UnavailableMessage формирует пользовательскую ошибку, когда verify-before-create находит недоступные сайты.
 func UnavailableMessage(failures []urlcheck.Result) string {
 	if len(failures) == 0 {
 		return "Site is unavailable and was not created"
@@ -63,17 +64,19 @@ func UnavailableMessage(failures []urlcheck.Result) string {
 	return fmt.Sprintf("Sites are unavailable and were not created: %s", strings.Join(parts, "; "))
 }
 
-// VerifyReachable probes urls with the same up/down rules as the background worker.
+// VerifyReachable проверяет urls по тем же правилам up/down, что и фоновый worker.
 func VerifyReachable(ctx context.Context, urls []string) []urlcheck.Result {
 	if len(urls) == 0 {
 		return nil
 	}
 	client := urlcheck.NewClient(createVerifyConcurrency)
 	results := urlcheck.ProbeAll(ctx, client, urls, createVerifyConcurrency)
+	// Возвращаем только недоступные — caller решает, отклонять ли создание.
 	return urlcheck.UnavailableURLs(results)
 }
 
-// ExistingURLs returns which of the candidate URLs are already stored as monitors.
+// ExistingURLs возвращает, какие из кандидатов уже сохранены как мониторы.
+// Конфликты возвращаются в порядке candidates, а не в порядке строк из БД.
 func (s *Service) ExistingURLs(candidates []string) ([]string, error) {
 	if len(candidates) == 0 {
 		return nil, nil
@@ -91,6 +94,7 @@ func (s *Service) ExistingURLs(candidates []string) ([]string, error) {
 		existing[u] = struct{}{}
 	}
 
+	// Сохраняем порядок candidates — сообщение об ошибке повторяет порядок в форме.
 	conflicts := make([]string, 0, len(found))
 	for _, u := range candidates {
 		if _, ok := existing[u]; ok {
@@ -100,7 +104,7 @@ func (s *Service) ExistingURLs(candidates []string) ([]string, error) {
 	return conflicts, nil
 }
 
-// ExcludeURLs returns urls with any entry present in exclude removed.
+// ExcludeURLs возвращает urls без записей, присутствующих в exclude.
 func ExcludeURLs(urls, exclude []string) []string {
 	if len(urls) == 0 || len(exclude) == 0 {
 		return urls
@@ -114,6 +118,7 @@ func ExcludeURLs(urls, exclude []string) []string {
 	out := make([]string, 0, len(urls))
 	for _, u := range urls {
 		if _, ok := skip[u]; ok {
+			// URL уже в БД и SkipExisting=true — не создаём повторно.
 			continue
 		}
 		out = append(out, u)
@@ -121,13 +126,15 @@ func ExcludeURLs(urls, exclude []string) []string {
 	return out
 }
 
-// MarkUp transitions the monitor status to UP and resolves any open incident in one transaction.
+// MarkUp переводит статус монитора в UP и закрывает открытый инцидент в одной транзакции.
+// Возвращаемый wasDown == true означает «был переход DOWN→UP»; false, если IsUp был nil (ещё не проверяли).
 func (s *Service) MarkUp(monitor models.MonitorURL, checkedAt time.Time, responseTimeMs *int) (bool, error) {
 	var wasDown bool
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if monitor.IsUp != nil {
 			wasDown = !(*monitor.IsUp)
 		} else {
+			// Первая проверка — не считаем переходом DOWN→UP для уведомлений.
 			wasDown = false
 		}
 
@@ -150,6 +157,7 @@ func (s *Service) MarkUp(monitor models.MonitorURL, checkedAt time.Time, respons
 			return err
 		}
 		if openIncident != nil {
+			// Закрываем инцидент — resolved_at = время успешной проверки.
 			if err := tx.Model(openIncident).Update("resolved_at", checkedAt).Error; err != nil {
 				return err
 			}
@@ -159,13 +167,15 @@ func (s *Service) MarkUp(monitor models.MonitorURL, checkedAt time.Time, respons
 	return wasDown, err
 }
 
-// MarkDown transitions the monitor status to DOWN and opens/updates an incident in one transaction.
+// MarkDown переводит статус монитора в DOWN и открывает/обновляет инцидент в одной транзакции.
+// Возвращаемый wasUp == true означает «был переход UP→DOWN»; false, если IsUp был nil (ещё не проверяли).
 func (s *Service) MarkDown(monitor models.MonitorURL, checkedAt time.Time, errMsg string, responseTimeMs *int) (bool, error) {
 	var wasUp bool
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if monitor.IsUp != nil {
 			wasUp = *monitor.IsUp
 		} else {
+			// Первая проверка сразу DOWN — не UP→DOWN для уведомлений.
 			wasUp = false
 		}
 
@@ -188,6 +198,7 @@ func (s *Service) MarkDown(monitor models.MonitorURL, checkedAt time.Time, errMs
 			return err
 		}
 		if openIncident == nil {
+			// Новый простой — создаём открытый инцидент.
 			incident := models.Incident{
 				MonitorURLID: monitor.ID,
 				StartedAt:    checkedAt,
@@ -197,6 +208,7 @@ func (s *Service) MarkDown(monitor models.MonitorURL, checkedAt time.Time, errMs
 				return err
 			}
 		} else if openIncident.ErrorMessage != errMsg {
+			// Инцидент уже открыт — обновляем текст ошибки при смене причины.
 			if err := tx.Model(openIncident).Update("error_message", errMsg).Error; err != nil {
 				return err
 			}

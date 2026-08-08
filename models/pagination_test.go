@@ -3,6 +3,7 @@ package models
 import "testing"
 
 func TestTotalPages(t *testing.T) {
+	// Arrange: total, perPage и ожидаемое число страниц (минимум 1).
 	tests := []struct {
 		name    string
 		total   int64
@@ -17,6 +18,7 @@ func TestTotalPages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: TotalPages округляет вверх и не даёт 0 страниц.
 			if got := TotalPages(tt.total, tt.perPage); got != tt.want {
 				t.Fatalf("TotalPages() = %d, want %d", got, tt.want)
 			}
@@ -25,6 +27,7 @@ func TestTotalPages(t *testing.T) {
 }
 
 func TestClampPage(t *testing.T) {
+	// Arrange: номер страницы, total и perPage для clamp в допустимый диапазон.
 	tests := []struct {
 		name    string
 		page    int
@@ -39,6 +42,7 @@ func TestClampPage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: ClampPage ограничивает page ∈ [1, TotalPages].
 			if got := ClampPage(tt.page, tt.total, tt.perPage); got != tt.want {
 				t.Fatalf("ClampPage() = %d, want %d", got, tt.want)
 			}

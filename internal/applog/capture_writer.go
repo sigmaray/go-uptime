@@ -8,18 +8,18 @@ import (
 	"time"
 )
 
-// CaptureWriter mirrors zerolog JSON lines into the in-memory log ring buffer.
+// CaptureWriter дублирует JSON-строки zerolog в кольцевой буфер логов в памяти.
 type CaptureWriter struct {
 	mu  sync.Mutex
 	buf []byte
 }
 
-// NewCaptureWriter returns a writer that parses zerolog JSON output into RecentLogs.
+// NewCaptureWriter возвращает writer, который разбирает вывод zerolog JSON в RecentLogs.
 func NewCaptureWriter() *CaptureWriter {
 	return &CaptureWriter{}
 }
 
-// Write implements io.Writer and buffers partial lines until a newline is received.
+// Write реализует io.Writer и буферизует неполные строки до получения перевода строки.
 func (w *CaptureWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -28,6 +28,7 @@ func (w *CaptureWriter) Write(p []byte) (int, error) {
 	for {
 		idx := bytes.IndexByte(w.buf, '\n')
 		if idx < 0 {
+			// Неполная строка — ждём следующий Write.
 			break
 		}
 		line := w.buf[:idx]
@@ -37,7 +38,8 @@ func (w *CaptureWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// parseZerologLine decodes one zerolog JSON line and stores it in the ring buffer.
+// parseZerologLine декодирует одну JSON-строку zerolog в Entry и кладёт в кольцевой буфер логов.
+// Поля level, time, message → Entry; остальное → Fields. warn/error/fatal/panic дублируются в буфер ошибок.
 func parseZerologLine(line []byte) {
 	if len(line) == 0 {
 		return
@@ -45,6 +47,7 @@ func parseZerologLine(line []byte) {
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(line, &fields); err != nil {
+		// Невалидный JSON — сохраняем сырую строку как unknown-level log.
 		addLogEntry(Entry{
 			Time:    time.Now(),
 			Level:   "unknown",
@@ -61,6 +64,7 @@ func parseZerologLine(line []byte) {
 	message := decodeStringField(fields["message"])
 	entryTime := decodeTimeField(fields["time"])
 
+	// Все поля кроме level/time/message — structured context в Fields.
 	extra := make(map[string]json.RawMessage, len(fields))
 	for key, value := range fields {
 		if key == "level" || key == "time" || key == "message" {
@@ -85,15 +89,14 @@ func parseZerologLine(line []byte) {
 	}
 	addLogEntry(entry)
 
-	// Mirror warn+ entries into the admin errors buffer with full structured fields
-	// so production failures (error message, monitor_id, path, etc.) are investigable.
+	// warn+ попадают и в /admin/errors с теми же structured fields для расследования.
 	if isCapturedErrorLevel(level) {
 		addErrorEntry(entry)
 	}
 }
 
-// isCapturedErrorLevel reports whether a zerolog level should appear on /admin/errors.
-// level is the zerolog level string from a JSON log line (for example "warn" or "error").
+// isCapturedErrorLevel сообщает, должен ли уровень zerolog появляться на /admin/errors.
+// level — строка уровня zerolog из JSON-строки лога (например "warn" или "error").
 func isCapturedErrorLevel(level string) bool {
 	switch level {
 	case "warn", "error", "fatal", "panic":
@@ -114,6 +117,7 @@ func decodeStringField(raw json.RawMessage) string {
 	return value
 }
 
+// decodeTimeField читает поле "time" из JSON zerolog (unix int/string или float epoch).
 func decodeTimeField(raw json.RawMessage) time.Time {
 	if len(raw) == 0 {
 		return time.Now()
@@ -128,6 +132,7 @@ func decodeTimeField(raw json.RawMessage) time.Time {
 
 	var asNumber float64
 	if err := json.Unmarshal(raw, &asNumber); err == nil {
+		// Zerolog может писать time как float epoch с дробной частью (наносекунды).
 		sec := int64(asNumber)
 		nsec := int64((asNumber - float64(sec)) * float64(time.Second))
 		return time.Unix(sec, nsec)

@@ -6,21 +6,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserRepository handles database operations for User entities.
+// UserRepository выполняет операции с сущностями User в базе данных.
 type UserRepository interface {
-	// FindUserByUsername looks up a user by their unique username.
-	// Returns nil, nil if the user does not exist.
+	// FindUserByUsername ищет пользователя по уникальному имени.
+	// Возвращает nil, nil, если пользователь не существует.
 	FindUserByUsername(username string) (*models.User, error)
-	// CreateUser creates a new user with a securely hashed password.
+	// CreateUser создаёт нового пользователя с безопасно хешированным паролем.
 	CreateUser(username, password string) (models.User, error)
 }
 
-// userRepository implements UserRepository using GORM.
+// userRepository реализует UserRepository через GORM.
 type userRepository struct {
 	db *gorm.DB
 }
 
-// NewUserRepository creates a new repository for users.
+// NewUserRepository создаёт новый репозиторий пользователей.
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{db: db}
 }
@@ -30,6 +30,7 @@ func (r *userRepository) FindUserByUsername(username string) (*models.User, erro
 	err := r.db.Where("username = ?", username).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Отсутствие пользователя — нормальный исход для login.
 			return nil, nil
 		}
 		return nil, err
@@ -38,6 +39,7 @@ func (r *userRepository) FindUserByUsername(username string) (*models.User, erro
 }
 
 func (r *userRepository) CreateUser(username, password string) (models.User, error) {
+	// bcrypt-хеш до INSERT — пароль в открытом виде в БД не попадает.
 	hash, err := models.HashPassword(password)
 	if err != nil {
 		return models.User{}, err

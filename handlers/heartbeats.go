@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// HeartbeatsList renders the global heartbeat history page.
+// HeartbeatsList отрисовывает глобальную страницу истории heartbeat.
 func (h *Handler) HeartbeatsList(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
@@ -30,6 +30,7 @@ func (h *Handler) HeartbeatsList(c *gin.Context) {
 	page = models.ClampPage(page, total, perPage)
 
 	var checks []models.MonitorCheck
+	// Preload MonitorURL — сортировка по MonitorURL требует JOIN в sort.Apply.
 	query := sort.Apply(h.DB.Model(&models.MonitorCheck{}).Preload("MonitorURL"))
 	if err := query.
 		Offset(models.PageOffset(page, perPage)).

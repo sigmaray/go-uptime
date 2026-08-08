@@ -9,142 +9,142 @@ import (
 	"go-uptime/worker"
 )
 
-// infoDiagnosticsRecentErrorsLimit caps how many in-memory errors appear in the JSON blob.
+// infoDiagnosticsRecentErrorsLimit ограничивает число in-memory ошибок в JSON blob.
 const infoDiagnosticsRecentErrorsLimit = 50
 
-// infoDiagnostics is the Cursor-friendly ops snapshot embedded on the admin info page.
+// infoDiagnostics — Cursor-friendly ops snapshot, встроенный на страницу info админки.
 type infoDiagnostics struct {
-	// GeneratedAt is when this snapshot was assembled (RFC3339 in JSON).
+	// GeneratedAt — когда этот snapshot был собран (RFC3339 в JSON).
 	GeneratedAt time.Time `json:"generated_at"`
-	// Environment is the non-secret GO_UPTIME_ENVIRONMENT value.
+	// Environment — не секретное значение GO_UPTIME_ENVIRONMENT.
 	Environment string `json:"environment"`
-	// Worker holds live check-wave and queue depth metrics.
+	// Worker содержит live check-wave и queue depth metrics.
 	Worker infoDiagnosticsWorker `json:"worker"`
-	// Monitors summarizes fleet backlog and status composition.
+	// Monitors суммирует fleet backlog и status composition.
 	Monitors infoDiagnosticsMonitors `json:"monitors"`
-	// HeartbeatsPastHour aggregates successful vs failed checks in the last hour.
+	// HeartbeatsPastHour агрегирует успешные и неуспешные checks за последний час.
 	HeartbeatsPastHour infoDiagnosticsHeartbeats `json:"heartbeats_past_hour"`
-	// Incidents counts open and total incident rows.
+	// Incidents считает open и total incident rows.
 	Incidents infoDiagnosticsIncidents `json:"incidents"`
-	// Applog summarizes in-memory log buffers and recent errors.
+	// Applog суммирует in-memory log buffers и недавние ошибки.
 	Applog infoDiagnosticsApplog `json:"applog"`
-	// Tables lists application tables with row counts and on-disk sizes.
+	// Tables перечисляет таблицы приложения с row counts и on-disk sizes.
 	Tables []infoDiagnosticsTable `json:"tables"`
 }
 
-// infoDiagnosticsWorker is the worker section of the diagnostics JSON.
+// infoDiagnosticsWorker — секция worker в diagnostics JSON.
 type infoDiagnosticsWorker struct {
-	// Running is true when the monitor worker loop has started and not stopped.
+	// Running — true, когда цикл monitor worker запущен и не остановлен.
 	Running bool `json:"running"`
-	// Paused is true when new check waves are suppressed (for example during e2e).
+	// Paused — true, когда новые check waves подавлены (например во время e2e).
 	Paused bool `json:"paused"`
-	// DueThisWave is how many claimed monitors have not finished probing yet.
+	// DueThisWave — сколько claimed мониторов ещё не завершили probing.
 	DueThisWave int `json:"due_this_wave"`
-	// InFlight is how many HTTP checks are executing right now.
+	// InFlight — сколько HTTP checks выполняется прямо сейчас.
 	InFlight int `json:"in_flight"`
-	// WaitingForSlot is how many claimed monitors still wait for a concurrency slot.
+	// WaitingForSlot — сколько claimed мониторов всё ещё ждут concurrency slot.
 	WaitingForSlot int `json:"waiting_for_slot"`
-	// MaxConcurrency is the configured concurrent HTTP check limit.
+	// MaxConcurrency — настроенный лимит concurrent HTTP checks.
 	MaxConcurrency int `json:"max_concurrency"`
-	// ResultQueued is completed checks waiting to persist.
+	// ResultQueued — завершённые checks, ожидающие persist.
 	ResultQueued int `json:"result_queued"`
-	// ResultCapacity is the persist channel buffer size.
+	// ResultCapacity — размер буфера persist channel.
 	ResultCapacity int `json:"result_capacity"`
-	// NotifyQueued is how many status-change alerts sit in the notify channel.
+	// NotifyQueued — сколько status-change alerts находится в notify channel.
 	NotifyQueued int `json:"notify_queued"`
-	// NotifyCapacity is the notify channel buffer size.
+	// NotifyCapacity — размер буфера notify channel.
 	NotifyCapacity int `json:"notify_capacity"`
 }
 
-// infoDiagnosticsMonitors is the monitors section of the diagnostics JSON.
+// infoDiagnosticsMonitors — секция monitors в diagnostics JSON.
 type infoDiagnosticsMonitors struct {
-	// Total is how many monitors exist.
+	// Total — сколько мониторов существует.
 	Total int `json:"total"`
-	// DueWaiting is how many monitors are already due for a check.
+	// DueWaiting — сколько мониторов уже due для check.
 	DueWaiting int `json:"due_waiting"`
-	// NeverChecked is how many monitors have never been probed.
+	// NeverChecked — сколько мониторов никогда не probed.
 	NeverChecked int `json:"never_checked"`
-	// Fleet breaks monitors down by current status.
+	// Fleet разбивает мониторы по текущему статусу.
 	Fleet infoDiagnosticsFleet `json:"fleet"`
-	// MostOverdue is the worst overdue monitor, or null when none exist.
+	// MostOverdue — худший просроченный монитор или null, если таких нет.
 	MostOverdue *infoDiagnosticsOverdue `json:"most_overdue"`
 }
 
-// infoDiagnosticsFleet counts monitors by up/down/unknown status.
+// infoDiagnosticsFleet считает мониторы по статусу up/down/unknown.
 type infoDiagnosticsFleet struct {
-	// Up is monitors last seen healthy.
+	// Up — мониторы, последний раз seen healthy.
 	Up int `json:"up"`
-	// Down is monitors last seen unhealthy.
+	// Down — мониторы, последний раз seen unhealthy.
 	Down int `json:"down"`
-	// Unknown is monitors that have never been checked.
+	// Unknown — мониторы, которые никогда не checked.
 	Unknown int `json:"unknown"`
 }
 
-// infoDiagnosticsOverdue describes the single most overdue monitor for diagnostics.
+// infoDiagnosticsOverdue описывает единственный самый просроченный монитор для diagnostics.
 type infoDiagnosticsOverdue struct {
-	// ID is the monitor_urls primary key.
+	// ID — primary key monitor_urls.
 	ID uint `json:"id"`
-	// Name is the display name shown in the admin UI.
+	// Name — отображаемое имя в admin UI.
 	Name string `json:"name"`
-	// URL is the monitored URL.
+	// URL — мониторимый URL.
 	URL string `json:"url"`
-	// LastChecked is the formatted last-check timestamp.
+	// LastChecked — отформатированный timestamp последней проверки.
 	LastChecked string `json:"last_checked"`
-	// OverdueBy is a short human-readable overdue duration.
+	// OverdueBy — краткая человекочитаемая overdue duration.
 	OverdueBy string `json:"overdue_by"`
 }
 
-// infoDiagnosticsHeartbeats summarizes past-hour heartbeat totals.
+// infoDiagnosticsHeartbeats суммирует totals heartbeat за прошлый час.
 type infoDiagnosticsHeartbeats struct {
-	// Total is successful plus failed heartbeats in the window.
+	// Total — успешные плюс неуспешные heartbeat в окне.
 	Total int `json:"total"`
-	// Success is successful heartbeats in the window.
+	// Success — успешные heartbeat в окне.
 	Success int `json:"success"`
-	// Failed is failed heartbeats in the window.
+	// Failed — неуспешные heartbeat в окне.
 	Failed int `json:"failed"`
 }
 
-// infoDiagnosticsIncidents summarizes incident row counts.
+// infoDiagnosticsIncidents суммирует counts incident rows.
 type infoDiagnosticsIncidents struct {
-	// Total is all incident rows.
+	// Total — все incident rows.
 	Total int64 `json:"total"`
-	// Open is incidents that are not yet resolved.
+	// Open — incidents, которые ещё не resolved.
 	Open int64 `json:"open"`
 }
 
-// infoDiagnosticsApplog summarizes in-memory applog buffers for Cursor analysis.
+// infoDiagnosticsApplog суммирует in-memory applog buffers для Cursor analysis.
 type infoDiagnosticsApplog struct {
-	// ErrorsStored is how many error records are currently buffered.
+	// ErrorsStored — сколько error records сейчас в буфере.
 	ErrorsStored int64 `json:"errors_stored"`
-	// EventsStored is how many application events are currently buffered.
+	// EventsStored — сколько application events сейчас в буфере.
 	EventsStored int64 `json:"events_stored"`
-	// RequestsStored is how many monitor HTTP request records are buffered.
+	// RequestsStored — сколько monitor HTTP request records в буфере.
 	RequestsStored int64 `json:"requests_stored"`
-	// RecentErrors are the newest error entries, capped for payload size.
+	// RecentErrors — новейшие error entries, ограниченные для размера payload.
 	RecentErrors []applog.Entry `json:"recent_errors"`
 }
 
-// infoDiagnosticsTable is one PostgreSQL application table with size metrics.
+// infoDiagnosticsTable — одна PostgreSQL-таблица приложения с size metrics.
 type infoDiagnosticsTable struct {
-	// Name is the PostgreSQL table name.
+	// Name — имя PostgreSQL-таблицы.
 	Name string `json:"name"`
-	// RowCount is the number of rows currently stored in the table.
+	// RowCount — число строк, сейчас хранящихся в таблице.
 	RowCount int64 `json:"row_count"`
-	// TotalBytes is pg_total_relation_size for the table (including indexes).
+	// TotalBytes — pg_total_relation_size для таблицы (включая indexes).
 	TotalBytes int64 `json:"total_bytes"`
 }
 
-// buildInfoDiagnostics assembles the Cursor-friendly diagnostics snapshot.
-// now is the snapshot timestamp written into generated_at.
-// environment is the non-secret application environment name.
-// w is the live monitor worker (may be nil in tests).
-// workerStats is the point-in-time Stats already loaded for the info page.
-// backlog is the due/waiting summary already computed for the info page.
-// fleet is the up/down/unknown composition already computed for the info page.
-// heartbeat is the past-hour chart already computed for the info page.
-// incidentTotal is the total number of incident rows.
-// incidentOpen is how many incidents are still unresolved.
-// tableCounts are application tables with row counts and disk sizes.
+// buildInfoDiagnostics собирает Cursor-friendly diagnostics snapshot.
+// now — timestamp snapshot, записываемый в generated_at.
+// environment — не секретное имя environment приложения.
+// w — live monitor worker (может быть nil в тестах).
+// workerStats — моментальный Stats, уже загруженный для страницы info.
+// backlog — сводка due/waiting, уже вычисленная для страницы info.
+// fleet — up/down/unknown composition, уже вычисленная для страницы info.
+// heartbeat — chart за прошлый час, уже вычисленный для страницы info.
+// incidentTotal — общее число incident rows.
+// incidentOpen — сколько incidents всё ещё unresolved.
+// tableCounts — таблицы приложения с row counts и disk sizes.
 func buildInfoDiagnostics(
 	now time.Time,
 	environment string,
@@ -163,12 +163,13 @@ func buildInfoDiagnostics(
 		paused = w.Paused()
 	}
 
+	// Ограничиваем размер JSON — только последние N ошибок из in-memory буфера.
 	recentErrors := applog.RecentErrors()
 	if len(recentErrors) > infoDiagnosticsRecentErrorsLimit {
 		recentErrors = recentErrors[:infoDiagnosticsRecentErrorsLimit]
 	}
 	if recentErrors == nil {
-		recentErrors = []applog.Entry{}
+		recentErrors = []applog.Entry{} // JSON null → пустой массив
 	}
 
 	tables := make([]infoDiagnosticsTable, 0, len(tableCounts))
@@ -221,11 +222,12 @@ func buildInfoDiagnostics(
 	}
 }
 
-// fleetCountsFromChart maps stacked fleet segments into the diagnostics fleet object.
-// chart is the composition chart already built for the info page UI.
+// fleetCountsFromChart преобразует stacked fleet segments в объект diagnostics fleet.
+// chart — composition chart, уже построенный для UI страницы info.
 func fleetCountsFromChart(chart compositionChart) infoDiagnosticsFleet {
 	out := infoDiagnosticsFleet{}
 	for _, segment := range chart.Segments {
+		// Modifier совпадает с BEM-классами UI — переиспользуем для JSON.
 		switch segment.Modifier {
 		case "up":
 			out.Up = segment.Count
@@ -238,11 +240,11 @@ func fleetCountsFromChart(chart compositionChart) infoDiagnosticsFleet {
 	return out
 }
 
-// overdueFromView converts the template overdue view into a JSON pointer or nil.
-// view is the most-overdue presentation fields from computeMonitorBacklog.
+// overdueFromView преобразует template overdue view в JSON pointer или nil.
+// view — поля представления most-overdue из computeMonitorBacklog.
 func overdueFromView(view overdueMonitorView) *infoDiagnosticsOverdue {
 	if !view.HasOverdue {
-		return nil
+		return nil // в JSON поле most_overdue будет null
 	}
 	return &infoDiagnosticsOverdue{
 		ID:          view.ID,
@@ -253,9 +255,10 @@ func overdueFromView(view overdueMonitorView) *infoDiagnosticsOverdue {
 	}
 }
 
-// marshalInfoDiagnosticsJSON pretty-prints diagnostics for the info page <pre> block.
-// diagnostics is the snapshot already assembled by buildInfoDiagnostics.
+// marshalInfoDiagnosticsJSON pretty-prints diagnostics для блока <pre> на странице info.
+// diagnostics — snapshot, уже собранный buildInfoDiagnostics.
 func marshalInfoDiagnosticsJSON(diagnostics infoDiagnostics) (string, error) {
+	// MarshalIndent — читаемый блок <pre> на странице info для копирования.
 	raw, err := json.MarshalIndent(diagnostics, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("marshal info diagnostics: %w", err)

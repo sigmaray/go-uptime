@@ -7,6 +7,7 @@ import (
 )
 
 func TestMonitorURLExistsMessage(t *testing.T) {
+	// Табличный тест URLExistsMessage: generic vs список duplicate URL в flash/error.
 	tests := []struct {
 		name string
 		urls []string
@@ -36,6 +37,7 @@ func TestMonitorURLExistsMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: nil/blank → константа ErrMonitorURLExists; иначе — перечисление URL.
 			got := URLExistsMessage(tt.urls...)
 			if got != tt.want {
 				t.Fatalf("URLExistsMessage() = %q, want %q", got, tt.want)
@@ -45,6 +47,7 @@ func TestMonitorURLExistsMessage(t *testing.T) {
 }
 
 func TestMonitorUnavailableMessage(t *testing.T) {
+	// Табличный тест UnavailableMessage для bulk create когда probe failed.
 	tests := []struct {
 		name     string
 		failures []urlcheck.Result
@@ -74,6 +77,7 @@ func TestMonitorUnavailableMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: singular/plural «Site»/«Sites» и формат «url (err)».
 			got := UnavailableMessage(tt.failures)
 			if got != tt.want {
 				t.Fatalf("UnavailableMessage() = %q, want %q", got, tt.want)
@@ -83,6 +87,7 @@ func TestMonitorUnavailableMessage(t *testing.T) {
 }
 
 func TestExcludeURLs(t *testing.T) {
+	// Табличный тест ExcludeURLs: set subtraction с сохранением порядка.
 	tests := []struct {
 		name    string
 		urls    []string
@@ -117,7 +122,9 @@ func TestExcludeURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act.
 			got := ExcludeURLs(tt.urls, tt.exclude)
+			// Assert: длина и поэлементное совпадение (nil vs []{} различать не нужно для len).
 			if len(got) != len(tt.want) {
 				t.Fatalf("ExcludeURLs() len = %d, want %d (%v)", len(got), len(tt.want), got)
 			}

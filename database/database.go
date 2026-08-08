@@ -1,4 +1,4 @@
-// Package database handles PostgreSQL connections and Goose migrations.
+// Package database управляет подключениями к PostgreSQL и миграциями Goose.
 package database
 
 import (
@@ -20,20 +20,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// DSN builds a PostgreSQL connection string from configuration.
-// c holds host, port, credentials, database name, and SSL mode (defaults to disable when empty).
+// DSN формирует строку подключения к PostgreSQL из конфигурации.
+// c содержит host, port, учётные данные, имя базы и SSL mode (по умолчанию disable, если пусто).
 func DSN(c config.DatabaseConfig) string {
 	sslMode := c.SSLMode
 	if sslMode == "" {
 		sslMode = "disable"
 	}
+	// libpq connection string — используется GORM postgres driver.
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		c.Host, c.Port, c.User, c.Password, c.DBName, sslMode,
 	)
 }
 
-// Connect opens a PostgreSQL connection through GORM.
+// Connect открывает подключение к PostgreSQL через GORM.
 func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	db, err := gorm.Open(postgres.Open(DSN(cfg)), &gorm.Config{})
 	if err != nil {
@@ -42,6 +43,7 @@ func Connect(cfg config.DatabaseConfig) *gorm.DB {
 
 	sqlDB, err := db.DB()
 	if err == nil {
+		// Размер пула: до 100 одновременных соединений, 10 простаивающих, час жизни conn.
 		sqlDB.SetMaxIdleConns(10)
 		sqlDB.SetMaxOpenConns(100)
 		sqlDB.SetConnMaxLifetime(time.Hour)
@@ -50,7 +52,7 @@ func Connect(cfg config.DatabaseConfig) *gorm.DB {
 	return db
 }
 
-// RunGooseMigrations applies embedded Goose SQL migrations.
+// RunGooseMigrations применяет встроенные SQL-миграции Goose.
 func RunGooseMigrations(migrations embed.FS, cfg config.DatabaseConfig) {
 	db := Connect(cfg)
 
@@ -69,6 +71,7 @@ func runMigrations(migrations embed.FS, sqlDB *sql.DB) {
 		log.Fatal().Err(err).Msg("failed to open migrations directory")
 	}
 
+	// PostgresSessionLocker: advisory lock в сессии — два процесса не мигрируют одновременно.
 	sessionLocker, err := gooseLock.NewPostgresSessionLocker()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create migration session locker")
@@ -84,12 +87,13 @@ func runMigrations(migrations embed.FS, sqlDB *sql.DB) {
 		log.Fatal().Err(err).Msg("failed to create migration provider")
 	}
 
+	// Up применяет все pending SQL-миграции из embed.FS.
 	if _, err := provider.Up(context.Background()); err != nil {
 		log.Fatal().Err(err).Msg("failed to run migrations")
 	}
 }
 
-// RunGormAutoMigrate creates or updates tables through GORM AutoMigrate.
+// RunGormAutoMigrate создаёт или обновляет таблицы через GORM AutoMigrate.
 func RunGormAutoMigrate(cfg config.DatabaseConfig) {
 	db := Connect(cfg)
 	if err := db.AutoMigrate(
@@ -106,7 +110,7 @@ func RunGormAutoMigrate(cfg config.DatabaseConfig) {
 	}
 }
 
-// ListTables returns user table names in the public schema.
+// ListTables возвращает имена пользовательских таблиц в схеме public.
 func ListTables(db *gorm.DB) ([]string, error) {
 	var tables []string
 	err := db.Raw(`
@@ -117,19 +121,20 @@ func ListTables(db *gorm.DB) ([]string, error) {
 	return tables, err
 }
 
-// ClearTable clears the specified table.
+// ClearTable очищает указанную таблицу.
 func ClearTable(db *gorm.DB, table string) error {
 	table = sanitizeIdentifier(table)
+	// RESTART IDENTITY сбрасывает serial/identity; CASCADE затронет FK-зависимости.
 	return db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", table)).Error
 }
 
-// DropTable drops the specified table.
+// DropTable удаляет указанную таблицу.
 func DropTable(db *gorm.DB, table string) error {
 	table = sanitizeIdentifier(table)
 	return db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)).Error
 }
 
-// ClearAllTables clears all user tables.
+// ClearAllTables очищает все пользовательские таблицы.
 func ClearAllTables(db *gorm.DB) error {
 	tables, err := ListTables(db)
 	if err != nil {
@@ -143,7 +148,7 @@ func ClearAllTables(db *gorm.DB) error {
 	return nil
 }
 
-// DropAllTables drops all user tables.
+// DropAllTables удаляет все пользовательские таблицы.
 func DropAllTables(db *gorm.DB) error {
 	tables, err := ListTables(db)
 	if err != nil {
@@ -157,9 +162,11 @@ func DropAllTables(db *gorm.DB) error {
 	return nil
 }
 
-// ExecuteSQL runs arbitrary SQL and returns result rows for SELECT queries.
+// ExecuteSQL выполняет произвольный SQL и возвращает строки результата для SELECT-запросов.
+// SELECT и WITH → columns + rows; INSERT/UPDATE/DELETE и прочее → только rowsAffected.
 func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, rowsAffected int64, err error) {
 	trimmed := strings.TrimSpace(strings.ToUpper(query))
+	// SELECT/WITH — читаем result set построчно и отдаём всё как строки (для JSON в Tools).
 	if strings.HasPrefix(trimmed, "SELECT") || strings.HasPrefix(trimmed, "WITH") {
 		sqlRows, qerr := db.Raw(query).Rows()
 		if qerr != nil {
@@ -173,6 +180,7 @@ func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, r
 		}
 
 		for sqlRows.Next() {
+			// Scan через []interface{} — типы колонок заранее неизвестны.
 			values := make([]interface{}, len(columns))
 			ptrs := make([]interface{}, len(columns))
 			for i := range values {
@@ -186,6 +194,7 @@ func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, r
 				if v == nil {
 					row[i] = "NULL"
 				} else {
+					// Унифицируем вывод для UI: любые типы → строка.
 					row[i] = fmt.Sprint(v)
 				}
 			}
@@ -194,10 +203,13 @@ func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, r
 		return columns, rows, int64(len(rows)), sqlRows.Err()
 	}
 
+	// Не SELECT: Exec и число затронутых строк (без набора result set).
 	result := db.Exec(query)
 	return nil, nil, result.RowsAffected, result.Error
 }
 
+// sanitizeIdentifier проверяет имя таблицы перед подстановкой в SQL (dev tools).
+// Допустимы только буквы, цифры и underscore — защита от инъекции через имя таблицы.
 func sanitizeIdentifier(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -207,6 +219,7 @@ func sanitizeIdentifier(name string) string {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
 			continue
 		}
+		// Недопустимый символ — panic, т.к. это dev tools, не user-facing SQL.
 		panic("invalid table name: " + name)
 	}
 	return name

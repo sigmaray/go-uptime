@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// IncidentsList displays incident history.
+// IncidentsList отображает историю инцидентов.
 func (h *Handler) IncidentsList(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
@@ -21,6 +21,7 @@ func (h *Handler) IncidentsList(c *gin.Context) {
 	}
 	page = models.ClampPage(page, total, perPage)
 
+	// LoadIncidentsPage подгружает MonitorURL для отображения имени в списке.
 	incidents, err := models.LoadIncidentsPage(h.DB, page, perPage)
 	if err != nil {
 		applog.AddError("failed to load incidents", err.Error())

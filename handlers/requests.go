@@ -9,11 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RequestsPage renders the last in-memory HTTP requests to monitored sites.
+// RequestsPage отрисовывает последние HTTP-запросы к мониторимым сайтам из памяти.
 func (h *Handler) RequestsPage(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
-	total := applog.CountMonitorRequests()
+	total := applog.CountMonitorRequests() // HTTP probe log из worker, in-memory
 	page = models.ClampPage(page, total, perPage)
 
 	pagination := buildPaginationView(total, page, perPage, "Monitor Requests", func(p int) string {

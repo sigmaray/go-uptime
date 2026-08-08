@@ -8,35 +8,35 @@ import (
 	"gorm.io/gorm"
 )
 
-// Monitors list status filter query values.
+// Значения query-фильтра статуса списка мониторов.
 const (
 	monitorsStatusAll  = ""
 	monitorsStatusUp   = "up"
 	monitorsStatusDown = "down"
 )
 
-// MonitorsListFilter holds status and URL fragment filters for the admin monitors list.
+// MonitorsListFilter содержит фильтры статуса и фрагмента URL для списка мониторов админки.
 type MonitorsListFilter struct {
-	// Status is "up", "down", or empty for all monitors.
+	// Status — "up", "down" или пусто для всех мониторов.
 	Status string
-	// Q is a case-insensitive URL substring to match; empty means no URL filter.
+	// Q — регистронезависимая подстрока URL для поиска; пусто означает отсутствие фильтра по URL.
 	Q string
-	// Path is the list page path used when building filter URLs.
+	// Path — путь страницы списка, используемый при формировании URL фильтров.
 	Path string
 }
 
-// parseMonitorsListFilter reads status and URL search filters from the request query.
-// c is the Gin request context whose Query values are inspected.
+// parseMonitorsListFilter читает фильтры статуса и поиска по URL из query запроса.
+// c — контекст Gin-запроса, чьи Query-значения проверяются.
 func parseMonitorsListFilter(c *gin.Context) MonitorsListFilter {
 	return MonitorsListFilter{
 		Path:   "/admin/monitors",
 		Status: normalizeMonitorsStatus(c.Query("status")),
-		Q:      strings.TrimSpace(c.Query("q")),
+		Q:      strings.TrimSpace(c.Query("q")), // поиск по подстроке URL
 	}
 }
 
-// normalizeMonitorsStatus maps a raw status query value to a supported filter.
-// raw is the status query parameter from the request.
+// normalizeMonitorsStatus сопоставляет сырое значение query status с поддерживаемым фильтром.
+// raw — query-параметр status из запроса.
 func normalizeMonitorsStatus(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case monitorsStatusUp:
@@ -48,25 +48,25 @@ func normalizeMonitorsStatus(raw string) string {
 	}
 }
 
-// Apply adds WHERE clauses for the active status and URL fragment filters.
-// db is the GORM query already scoped to monitor_urls.
+// Apply добавляет WHERE-условия для активных фильтров статуса и фрагмента URL.
+// db — GORM-запрос, уже ограниченный monitor_urls.
 func (f MonitorsListFilter) Apply(db *gorm.DB) *gorm.DB {
 	switch f.Status {
 	case monitorsStatusUp:
-		// Match the Up badge: checked at least once and currently up.
+		// Соответствует бейджу Up: проверен хотя бы раз и сейчас up.
 		db = db.Where("monitor_urls.last_checked_at IS NOT NULL AND monitor_urls.is_up = ?", true)
 	case monitorsStatusDown:
-		// Match the Down badge: checked at least once and not currently up.
+		// Соответствует бейджу Down: проверен хотя бы раз и сейчас не up.
 		db = db.Where("monitor_urls.last_checked_at IS NOT NULL AND monitor_urls.is_up IS DISTINCT FROM ?", true)
 	}
 	if f.Q != "" {
-		// strpos treats the needle as a literal, so %, _, and \ need no escaping.
+		// strpos трактует needle как литерал, поэтому %, _ и \ не требуют экранирования.
 		db = db.Where("strpos(lower(monitor_urls.url), lower(?)) > 0", f.Q)
 	}
 	return db
 }
 
-// QueryValues returns non-default filter parameters for pagination and sort links.
+// QueryValues возвращает нестандартные параметры фильтра для ссылок пагинации и сортировки.
 func (f MonitorsListFilter) QueryValues() url.Values {
 	q := url.Values{}
 	if f.Status != monitorsStatusAll {
@@ -81,15 +81,15 @@ func (f MonitorsListFilter) QueryValues() url.Values {
 	return q
 }
 
-// IsActive reports whether the given status filter option is selected.
-// status is "up", "down", or empty for All.
+// IsActive сообщает, выбран ли указанный вариант фильтра статуса.
+// status — "up", "down" или пусто для All.
 func (f MonitorsListFilter) IsActive(status string) bool {
 	return f.Status == normalizeMonitorsStatus(status)
 }
 
-// StatusURL builds a list URL that switches the status filter while keeping the URL search.
-// status is "up", "down", or empty for All; the link resets to page 1.
-// sort is the active list sort; only its column and order are preserved (not ExtraQuery).
+// StatusURL формирует URL списка, переключающий фильтр статуса с сохранением поиска по URL.
+// status — "up", "down" или пусто для All; ссылка сбрасывает на страницу 1.
+// sort — активная сортировка списка; сохраняются только column и order (не ExtraQuery).
 func (f MonitorsListFilter) StatusURL(status string, sort ListSort) string {
 	next := f
 	next.Status = normalizeMonitorsStatus(status)
@@ -98,17 +98,18 @@ func (f MonitorsListFilter) StatusURL(status string, sort ListSort) string {
 		sortOnly.Set("sort", sort.Column)
 		sortOnly.Set("order", sort.Order)
 	}
+	// Смена фильтра статуса → страница 1; поиск q сохраняется через next.QueryValues().
 	return buildAdminListURLWithQuery(next.Path, 1, mergeURLValues(sortOnly, next.QueryValues()))
 }
 
-// mergeURLValues copies keys from each non-nil url.Values into a new map.
-// values is a variadic list of query maps; later entries overwrite earlier keys on conflict.
+// mergeURLValues копирует ключи из каждого не-nil url.Values в новую map.
+// values — variadic-список query map; более поздние записи перезаписывают более ранние ключи при конфликте.
 func mergeURLValues(values ...url.Values) url.Values {
 	merged := url.Values{}
 	for _, item := range values {
 		for key, vals := range item {
 			for _, value := range vals {
-				merged.Add(key, value)
+				merged.Add(key, value) // поздние values перезаписывают ключи через Add-порядок
 			}
 		}
 	}

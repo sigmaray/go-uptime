@@ -7,6 +7,7 @@ import (
 )
 
 func TestFormatMonitorMessage(t *testing.T) {
+	// Табличный тест formatMonitorMessage для Telegram/SMTP уведомлений.
 	tests := []struct {
 		name   string
 		change MonitorStateChange
@@ -35,6 +36,7 @@ func TestFormatMonitorMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act + Assert: UP без suffix; DOWN с ErrMsg после двоеточия.
 			if got := formatMonitorMessage(tt.change); got != tt.want {
 				t.Fatalf("formatMonitorMessage() = %q, want %q", got, tt.want)
 			}
@@ -43,19 +45,25 @@ func TestFormatMonitorMessage(t *testing.T) {
 }
 
 func TestSendTestTelegramRequiresConfiguration(t *testing.T) {
+	// Act: SendTestTelegram с пустыми NotificationSettings.
+	// Assert: должен вернуть error — нельзя «тестировать» без telegram URL/token.
 	if err := SendTestTelegram(models.NotificationSettings{}); err == nil {
 		t.Fatal("SendTestTelegram() with empty settings should error")
 	}
 }
 
 func TestSendTestSMTPRequiresConfiguration(t *testing.T) {
+	// Act: SendTestSMTP без SMTP host/credentials.
+	// Assert: аналогично Telegram — конфигурация обязательна.
 	if err := SendTestSMTP(models.NotificationSettings{}); err == nil {
 		t.Fatal("SendTestSMTP() with empty settings should error")
 	}
 }
 
 func TestSendMonitorStateChangeSkipsUnconfiguredChannels(t *testing.T) {
+	// Arrange: monitor хочет notify telegram+SMTP, но settings пустые.
 	change := MonitorStateChange{DisplayName: "Example", URL: "https://example.com", IsUp: true}
+	// Act: SendMonitorStateChange не должен падать — просто skip unconfigured channels.
 	if err := SendMonitorStateChange(
 		models.NotificationSettings{},
 		models.MonitorURL{NotifyTelegram: true, NotifySMTP: true},

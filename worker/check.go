@@ -15,22 +15,25 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// claimWaveMultiplier sizes each claim relative to check concurrency so the next
-// claim can start while a prior wave is still draining slow probes.
+// claimWaveMultiplier задаёт размер каждого claim относительно check concurrency, чтобы следующий
+// claim мог начаться, пока предыдущая волна ещё завершает медленные проверки.
 const claimWaveMultiplier = 2
 
-// runDueMonitors claims a bounded set of due monitors and dispatches probes without waiting.
+// runDueMonitors захватывает ограниченный набор due-мониторов и запускает проверки без ожидания.
 func (w *MonitorWorker) runDueMonitors() {
+	// На паузе (e2e) не трогаем БД и не запускаем новые HTTP-проверки.
 	if w.Paused() {
 		return
 	}
 
+	// Backpressure: ноль, если волна или persist-очередь переполнены.
 	limit := w.claimBudget()
 	if limit < 1 {
 		return
 	}
 
 	now := time.Now()
+	// Транзакция с FOR UPDATE SKIP LOCKED — только due-строки, без блокировки чужих воркеров.
 	due, err := w.claimDueMonitors(now, limit)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load due monitor urls")
@@ -40,50 +43,56 @@ func (w *MonitorWorker) runDueMonitors() {
 		return
 	}
 
+	// Fire-and-forget goroutine на каждый монитор; loop не ждёт завершения.
 	w.dispatchChecks(due, w.checkMonitor)
 }
 
-// claimWaveLimit is the maximum number of monitors claimed in one scheduling tick.
-// It returns twice the HTTP concurrency so slow probes do not starve the next claim.
+// claimWaveLimit — максимальное число мониторов, захватываемых за один scheduling tick.
+// Возвращает удвоенный HTTP concurrency, чтобы медленные проверки не голодали следующий claim.
 func (w *MonitorWorker) claimWaveLimit() int {
 	return w.checkConcurrency * claimWaveMultiplier
 }
 
-// claimBudget is how many additional monitors may be claimed given currently pending work.
-// It returns zero when pending claimed checks already fill the wave limit (backpressure).
-// It also limits claims to free persist capacity so completed probes are never dropped
-// while the result channel or in-memory flush leftovers are backed up.
+// claimBudget — сколько дополнительных мониторов можно захватить с учётом текущей незавершённой работы.
+// Возвращает ноль, когда уже захваченные проверки заполнили лимит волны (backpressure).
+// Также ограничивает claim свободной ёмкостью persist, чтобы завершённые проверки не терялись,
+// пока channel result или остатки flush в памяти переполнены.
 func (w *MonitorWorker) claimBudget() int {
 	limit := w.claimWaveLimit()
 	pending := int(w.waveDue.Load())
 	if pending >= limit {
+		// Текущая волна ещё не освободила место — новый claim не берём.
 		return 0
 	}
 	budget := limit - pending
 
-	// Reserve persist capacity for probes already claimed and for flush leftovers
-	// held in the batch loop (those no longer sit on resultJobs).
+	// Резервируем ёмкость persist для уже захваченных проверок и остатков flush
+	// в batch loop (они больше не лежат в resultJobs). pending вычитаем отдельно:
+	// эти мониторы уже claim-нуты и обязательно займут слот в очереди persist,
+	// даже если HTTP-проверка ещё не завершилась.
 	free := cap(w.resultJobs) - len(w.resultJobs) - int(w.persistBacklog.Load()) - pending
 	if free < 1 {
+		// Некуда класть завершённые проверки — останавливаем claim до flush.
 		return 0
 	}
 	if budget > free {
+		// Бюджет волны не может превышать свободные слоты persist.
 		budget = free
 	}
 	return budget
 }
 
-// monitorScheduleUpdate is one claimed monitor's next scheduled check time.
+// monitorScheduleUpdate — время следующей запланированной проверки одного захваченного монитора.
 type monitorScheduleUpdate struct {
-	// ID is the monitor_urls.id row that was claimed for the current wave.
+	// ID — monitor_urls.id строки, захваченной для текущей волны.
 	ID uint
-	// NextCheckAt is the provisional time when the monitor may be checked again.
+	// NextCheckAt — предварительное время, когда монитор можно снова проверить.
 	NextCheckAt time.Time
 }
 
-// claimDueMonitors locks currently due monitors and postpones their next check before probing.
-// now is the worker's current clock value used to select due rows and compute provisional schedules.
-// limit caps how many due rows are claimed in this transaction; values below 1 claim nothing.
+// claimDueMonitors блокирует currently due мониторы и откладывает их следующую проверку до начала probing.
+// now — текущее время worker для выбора due-строк и вычисления предварительного расписания.
+// limit ограничивает число due-строк, захватываемых в этой транзакции; значения ниже 1 ничего не захватывают.
 func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.MonitorURL, error) {
 	if limit < 1 {
 		return nil, nil
@@ -91,6 +100,7 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.Mon
 
 	var due []models.MonitorURL
 	err := w.db.Transaction(func(tx *gorm.DB) error {
+		// SKIP LOCKED: другой процесс уже держит строку — пропускаем, не ждём.
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Where("next_check_at IS NULL OR next_check_at <= ?", now).
 			Order("next_check_at asc NULLS FIRST, id asc").
@@ -103,15 +113,18 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.Mon
 			return nil
 		}
 
+		// Глобальный интервал из app_settings; у монитора может быть свой override.
 		globalInterval := models.GetCheckIntervalSeconds(tx)
 		updates := make([]monitorScheduleUpdate, 0, len(due))
 		for _, monitor := range due {
 			intervalSec := models.MonitorCheckIntervalSeconds(monitor, globalInterval)
+			// Сдвигаем next_check_at вперёд на lease — монитор не попадёт в повторный claim, пока идёт probe.
 			updates = append(updates, monitorScheduleUpdate{
 				ID:          monitor.ID,
 				NextCheckAt: now.Add(claimLeaseDuration(intervalSec)),
 			})
 		}
+		// Одним UPDATE CASE — атомарно для всех захваченных id в этой транзакции.
 		return updateClaimedMonitorSchedules(tx, updates)
 	})
 	if err != nil {
@@ -120,23 +133,25 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.Mon
 	return due, nil
 }
 
-// claimLeaseDuration is how long a claimed monitor stays off the due queue before probing finishes.
-// intervalSeconds is the monitor's configured check interval.
-// The lease covers a full claim wave (claimWaveMultiplier probe rounds) plus a short flush buffer so
-// overlapping waves cannot reclaim a monitor while it waits for a slot, probes, or awaits batch persist.
+// claimLeaseDuration — как долго захваченный монитор остаётся вне due-очереди до завершения probing.
+// intervalSeconds — настроенный интервал проверки монитора.
+// Lease покрывает полную волну claim (claimWaveMultiplier раундов проверки) плюс короткий буфер flush, чтобы
+// перекрывающиеся волны не могли повторно захватить монитор, пока он ждёт слота HTTP-semaphore,
+// выполняется probe или ждёт запись batch в БД (processBatch перезапишет next_check_at окончательно).
 func claimLeaseDuration(intervalSeconds int) time.Duration {
 	interval := time.Duration(intervalSeconds) * time.Second
-	// Worst case: last monitor in a 2x-concurrency wave waits one full probe round, then probes,
-	// then waits up to the batch flush interval before next_check_at is rewritten.
+	// Худший случай: последний монитор в волне 2x concurrency ждёт полный раунд проверки (claimWaveMultiplier × timeout),
+	// затем сам probe, затем до ~2 с batch flush — только после этого persist обновит расписание.
 	lease := urlcheck.RequestTimeout*time.Duration(claimWaveMultiplier) + 2*time.Second
 	if interval > lease {
+		// Длинный интервал монитора — lease не короче настроенного периода.
 		return interval
 	}
 	return lease
 }
 
-// updateClaimedMonitorSchedules writes provisional next_check_at values in one SQL update.
-// tx is the transaction that already locked the due monitor rows; updates are the claimed schedules.
+// updateClaimedMonitorSchedules записывает предварительные next_check_at одним SQL-обновлением.
+// tx — транзакция, в которой due-строки мониторов уже заблокированы; updates — захваченные расписания.
 func updateClaimedMonitorSchedules(tx *gorm.DB, updates []monitorScheduleUpdate) error {
 	if len(updates) == 0 {
 		return nil
@@ -147,6 +162,7 @@ func updateClaimedMonitorSchedules(tx *gorm.DB, updates []monitorScheduleUpdate)
 		ids = append(ids, update.ID)
 	}
 
+	// Bulk UPDATE через CASE id WHEN ... — один round-trip вместо N UPDATE.
 	caseSQL, args := buildNextCheckAtCaseExpression(updates)
 	result := tx.Model(&models.MonitorURL{}).
 		Where("id IN ?", ids).
@@ -154,20 +170,22 @@ func updateClaimedMonitorSchedules(tx *gorm.DB, updates []monitorScheduleUpdate)
 	if result.Error != nil {
 		return result.Error
 	}
+	// Все захваченные строки должны обновиться; иначе кто-то удалил монитор между SELECT и UPDATE.
 	if result.RowsAffected != int64(len(updates)) {
 		return fmt.Errorf("claimed %d monitor schedules, updated %d", len(updates), result.RowsAffected)
 	}
 	return nil
 }
 
-// buildNextCheckAtCaseExpression builds the CASE expression used for bulk schedule updates.
-// updates contains monitor ids and their corresponding provisional next_check_at values.
-// THEN branches cast to timestamptz so PostgreSQL accepts the CASE result for next_check_at.
+// buildNextCheckAtCaseExpression строит CASE-выражение для bulk-обновления расписаний.
+// updates содержит id мониторов и соответствующие предварительные next_check_at.
+// Ветки THEN приводятся к timestamptz, чтобы PostgreSQL принял результат CASE для next_check_at.
 func buildNextCheckAtCaseExpression(updates []monitorScheduleUpdate) (string, []interface{}) {
 	var b strings.Builder
 	args := make([]interface{}, 0, len(updates)*2)
 	b.WriteString("CASE id")
 	for _, update := range updates {
+		// Плейсхолдеры GORM подставят id и UTC-время для каждой ветки CASE.
 		b.WriteString(" WHEN ? THEN ?::timestamptz")
 		args = append(args, update.ID, update.NextCheckAt.UTC())
 	}
@@ -175,16 +193,17 @@ func buildNextCheckAtCaseExpression(updates []monitorScheduleUpdate) (string, []
 	return b.String(), args
 }
 
-// dispatchChecks starts probe goroutines for monitors and returns without waiting.
-// monitors is the claimed set to probe; checkFn runs one probe and must be concurrency-safe.
-// A shared semaphore caps total in-flight HTTP work across overlapping waves.
-// The concurrency slot is released before the result is enqueued so a slow DB flush cannot
-// pin HTTP slots while resultJobs is full.
+// dispatchChecks запускает goroutine проверок для мониторов и возвращается без ожидания.
+// monitors — захваченный набор для проверки; checkFn выполняет одну проверку и должна быть безопасна для concurrent-вызовов.
+// Общий semaphore ограничивает суммарную HTTP-нагрузку между перекрывающимися волнами.
+// Слот concurrency освобождается до постановки результата в очередь, чтобы медленный flush в БД не
+// удерживал HTTP-слоты, пока resultJobs заполнен.
 func (w *MonitorWorker) dispatchChecks(monitors []models.MonitorURL, checkFn func(models.MonitorURL) checkResult) {
 	if len(monitors) == 0 {
 		return
 	}
 
+	// Сразу учитываем всю волну в waveDue — claimBudget видит backpressure.
 	w.waveDue.Add(int64(len(monitors)))
 	for _, monitor := range monitors {
 		m := monitor
@@ -193,41 +212,48 @@ func (w *MonitorWorker) dispatchChecks(monitors []models.MonitorURL, checkFn fun
 			defer w.wavesWG.Done()
 			defer w.waveDue.Add(-1)
 
+			// Блокируемся на semaphore — лимит одновременных HTTP между волнами.
 			w.checkSem <- struct{}{}
 			w.waveStarted.Add(1)
 			w.inFlight.Add(1)
 			res := checkFn(m)
+			// Освобождаем HTTP-слот до enqueue: медленный flush/persist не должен
+			// удерживать semaphore, пока resultJobs переполнен или batch loop отстаёт.
 			<-w.checkSem
 			w.inFlight.Add(-1)
 			w.waveStarted.Add(-1)
 
+			// Блокирующая отправка — результат не теряем; claimBudget ограничивает новые claim.
 			w.enqueueCheckResult(res)
 		}()
 	}
 }
 
-// enqueueCheckResult puts one probe outcome onto resultJobs without holding a check slot.
-// res is the completed probe result to persist.
-// The send blocks when the queue is full so results are never dropped; HTTP slots are
-// already released, and claimBudget stops new claims while the persist queue is backed up.
+// enqueueCheckResult кладёт результат одной проверки в resultJobs, не удерживая check slot.
+// res — завершённый результат проверки для сохранения.
+// Отправка блокируется при полной очереди, чтобы результаты не терялись; HTTP-слоты уже
+// освобождены, а claimBudget останавливает новые claim, пока очередь persist переполнена.
 func (w *MonitorWorker) enqueueCheckResult(res checkResult) {
+	// Намеренно блокируем goroutine — полная очередь означает backpressure на persist.
 	w.resultJobs <- res
 }
 
-// IsMonitorDue reports whether a monitor should be checked at now based on its last check time.
-// lastCheckedAt is nil when the monitor has never been checked.
-// interval is the effective check interval for the monitor.
-// now is the current time used for the due calculation.
+// IsMonitorDue сообщает, нужно ли проверять монитор в now по времени последней проверки.
+// lastCheckedAt равен nil, если монитор ещё ни разу не проверялся.
+// interval — эффективный интервал проверки монитора.
+// now — текущее время для расчёта due.
 func IsMonitorDue(lastCheckedAt *time.Time, interval time.Duration, now time.Time) bool {
 	if lastCheckedAt == nil {
+		// Никогда не проверяли — считаем due сразу.
 		return true
 	}
 	return now.Sub(*lastCheckedAt) >= interval
 }
 
-// checkMonitor probes one monitor and returns the result for batched persistence.
-// monitor is the claimed monitor_urls row to probe.
+// checkMonitor проверяет один монитор и возвращает результат для batch-сохранения.
+// monitor — захваченная строка monitor_urls для проверки.
 func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) checkResult {
+	// Жёсткий таймаут на весь HTTP round-trip — не зависаем на медленных хостах.
 	ctx, cancel := context.WithTimeout(context.Background(), urlcheck.RequestTimeout)
 	defer cancel()
 
@@ -236,6 +262,7 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) checkResult {
 	elapsed := int(result.DurationMs)
 
 	if !result.Up {
+		// In-memory ring log для UI «последние запросы» — не ждём batch flush.
 		w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, false, result.ErrMsg)
 		return checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed)}
 	}
@@ -244,15 +271,16 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) checkResult {
 	return checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed)}
 }
 
-// recordMonitorRequest stores one probe outcome in the in-memory request log ring.
-// monitorName is the display name; url is the probed address; statusCode and responseTimeMs
-// describe the HTTP outcome; isUp is availability; errMsg explains failures.
+// recordMonitorRequest сохраняет результат одной проверки в кольцевой in-memory request log.
+// monitorName — отображаемое имя; url — проверяемый адрес; statusCode и responseTimeMs
+// описывают HTTP-результат; isUp — доступность; errMsg объясняет сбои.
 func (w *MonitorWorker) recordMonitorRequest(monitorName, url string, statusCode int, responseTimeMs int64, isUp bool, errMsg string) {
+	// Потокобезопасный ring buffer — UI diagnostics без запроса к БД.
 	applog.AddMonitorRequest(monitorName, url, statusCode, responseTimeMs, isUp, errMsg)
 }
 
-// intPtr returns a pointer to v for optional integer fields.
-// v is the integer value to box.
+// intPtr возвращает указатель на v для optional integer полей.
+// v — целое значение для boxing.
 func intPtr(v int) *int {
 	return &v
 }

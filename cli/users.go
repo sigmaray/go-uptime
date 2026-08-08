@@ -1,4 +1,4 @@
-// Package cli provides interactive CLI commands for managing users and the database.
+// Package cli предоставляет интерактивные CLI-команды для управления пользователями и базой данных.
 package cli
 
 import (
@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// UsersSeed creates an admin/admin user after confirmation.
+// UsersSeed создаёт пользователя admin/admin после подтверждения.
 func UsersSeed(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -33,12 +33,13 @@ func UsersSeed(db *gorm.DB) {
 		log.Fatal().Err(err).Msg("failed to check admin")
 	}
 	if existing != nil {
+		// Идемпотентность seed-команды.
 		fmt.Println("User 'admin' already exists")
 		return
 	}
 
 	input := forms.CreateUserInput{Username: "admin", Password: "admin", ConfirmPassword: "admin"}
-	// UsersSeed intentionally bypasses validation to allow the documented insecure admin/admin credentials.
+	// UsersSeed намеренно обходит валидацию, чтобы разрешить документированные небезопасные учётные данные admin/admin.
 	user, err := models.CreateUser(db, input.Username, input.Password)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create admin user")
@@ -46,7 +47,7 @@ func UsersSeed(db *gorm.DB) {
 	fmt.Printf("Created user: id=%d username=%s\n", user.ID, user.Username)
 }
 
-// UsersCreate interactively creates a new user.
+// UsersCreate интерактивно создаёт нового пользователя.
 func UsersCreate(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -59,6 +60,7 @@ func UsersCreate(db *gorm.DB) {
 		log.Fatal().Str("error", forms.FormatValidationError(err)).Msg("invalid input")
 	}
 
+	// models.CreateUser — legacy path; CLI пока не переведён на repository.
 	user, err := models.CreateUser(db, input.Username, input.Password)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create user")
@@ -67,7 +69,7 @@ func UsersCreate(db *gorm.DB) {
 	fmt.Printf("Created user: id=%d username=%s\n", user.ID, user.Username)
 }
 
-// UsersShow prints all users as a table.
+// UsersShow выводит всех пользователей в виде таблицы.
 func UsersShow(db *gorm.DB) {
 	var users []models.User
 	if err := db.Order("id asc").Find(&users).Error; err != nil {
@@ -91,7 +93,8 @@ func UsersShow(db *gorm.DB) {
 	cliutil.PrintTable(headers, rows)
 }
 
-// UsersDeleteAll deletes all users after confirmation.
+// UsersDeleteAll безвозвратно удаляет всех пользователей (hard delete через Unscoped).
+// Деструктивная команда: после неё войти в админку будет нельзя, пока не создадите нового пользователя.
 func UsersDeleteAll(db *gorm.DB) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -100,6 +103,7 @@ func UsersDeleteAll(db *gorm.DB) {
 		return
 	}
 
+	// Unscoped + AllowGlobalUpdate — hard delete всех строк users, включая soft-deleted.
 	result := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&models.User{})
 	if result.Error != nil {
 		log.Fatal().Err(result.Error).Msg("failed to delete users")
@@ -109,6 +113,7 @@ func UsersDeleteAll(db *gorm.DB) {
 
 func confirmYes(reader *bufio.Reader, prompt string) bool {
 	answer := strings.ToLower(readLine(reader, prompt))
+	// Только y/yes — любой другой ответ трактуется как отказ.
 	return answer == "y" || answer == "yes"
 }
 

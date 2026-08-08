@@ -9,11 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ErrorsPage displays recent application errors from memory.
+// ErrorsPage отображает недавние ошибки приложения из памяти.
 func (h *Handler) ErrorsPage(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
-	total := applog.CountErrors()
+	total := applog.CountErrors() // in-memory ring buffer, не PostgreSQL
 	page = models.ClampPage(page, total, perPage)
 
 	pagination := buildPaginationView(total, page, perPage, "Application Errors", func(p int) string {
@@ -26,7 +26,7 @@ func (h *Handler) ErrorsPage(c *gin.Context) {
 	}, PageOptions{Title: "Errors", ActiveNav: "errors"})
 }
 
-// LogsPage renders significant application events kept in memory.
+// LogsPage отрисовывает значимые события приложения, хранящиеся в памяти.
 func (h *Handler) LogsPage(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
@@ -38,7 +38,7 @@ func (h *Handler) LogsPage(c *gin.Context) {
 	})
 
 	h.renderPage(c, http.StatusOK, "admin/logs/index.html", gin.H{
-		"Entries":    applog.EventsPage(page, perPage),
+		"Entries":    applog.EventsPage(page, perPage), // срез буфера по странице
 		"Pagination": pagination,
 	}, PageOptions{Title: "Logs", ActiveNav: "logs"})
 }

@@ -1,4 +1,4 @@
-# Full stack for local development, CI, and e2e tests.
+# Полный стек для локальной разработки, CI и e2e-тестов.
 
 services:
   postgres:

@@ -1,5 +1,8 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
 
+// E2e-тесты фильтра и поиска списка мониторов: status All/Down/Up, URL search, комбинации с sort и пагинацией.
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown> = {}) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +10,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -19,6 +23,7 @@ async function login(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
+/** Очистка мониторов и связанных таблиц (включая stat_minutely для uptime-колонок). */
 async function clearMonitors(request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'stat_minutely' });
   await apiCall(request, 'clear-table', { table: 'incidents' });
@@ -26,10 +31,12 @@ async function clearMonitors(request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'monitor_urls' });
 }
 
+/** URL из второй колонки таблицы мониторов. */
 async function monitorURLs(page: Page): Promise<string[]> {
   return page.locator('.monitors-table tbody tr td:nth-child(2) a').allTextContents();
 }
 
+/** Тексты badge статуса (Up/Down) из строк таблицы. */
 async function monitorStatuses(page: Page): Promise<string[]> {
   return page.locator('.monitors-table tbody tr td .badge').allTextContents();
 }
@@ -56,6 +63,7 @@ test.describe('Monitors list filter and search', () => {
     const filter = page.getByRole('search', { name: 'Filter monitors' });
     await expect(filter.getByRole('link', { name: 'All' })).toHaveClass(/active/);
 
+    // Фильтр Down — только упавший монитор.
     await filter.getByRole('link', { name: 'Down' }).click();
     await expect(page).toHaveURL(/status=down/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
@@ -63,12 +71,14 @@ test.describe('Monitors list filter and search', () => {
     await expect(await monitorStatuses(page)).toEqual(['Down']);
     await expect(filter.getByRole('link', { name: 'Down' })).toHaveClass(/active/);
 
+    // Фильтр Up.
     await filter.getByRole('link', { name: 'Up' }).click();
     await expect(page).toHaveURL(/status=up/);
     await expect(page.getByText('1 monitors.', { exact: true })).toBeVisible();
     await expect(await monitorURLs(page)).toEqual(['https://up.example.com']);
     await expect(await monitorStatuses(page)).toEqual(['Up']);
 
+    // All — снова три монитора, query param status убирается.
     await filter.getByRole('link', { name: 'All' }).click();
     await expect(page).not.toHaveURL(/status=/);
     await expect(page.getByText('3 monitors.', { exact: true })).toBeVisible();
@@ -101,6 +111,7 @@ test.describe('Monitors list filter and search', () => {
     ]);
     await expect(page.locator('#monitors-url-search')).toHaveValue('example.com');
 
+    // Поиск регистронезависимый (OTHER.TEST находит other.test).
     await page.locator('#monitors-url-search').fill('OTHER.TEST');
     await page.getByRole('button', { name: 'Search' }).click();
     await expect(page).toHaveURL(/q=OTHER\.TEST/);
@@ -127,6 +138,7 @@ test.describe('Monitors list filter and search', () => {
       'https://api.example.com/up',
     ]);
 
+    // status=down + q=api.example → один результат.
     await page.getByRole('search', { name: 'Filter monitors' }).getByRole('link', { name: 'Down' }).click();
     await expect(page).toHaveURL(/status=down/);
     await expect(page).toHaveURL(/q=api\.example/);
@@ -138,6 +150,7 @@ test.describe('Monitors list filter and search', () => {
   test('keeps filters when paginating monitors', async ({ page, request }) => {
     await login(page, request);
     await clearMonitors(request);
+    // 101 down + 1 up с общим фрагментом downpag в URL.
     await apiCall(request, 'sql', {
       query: `INSERT INTO monitor_urls (url, name, is_up, last_checked_at, created_at, updated_at)
               SELECT
@@ -206,6 +219,7 @@ test.describe('Monitors list filter and search', () => {
       'https://bravo.example.com',
     ]);
 
+    // Ссылка desc должна сохранять status=down в query.
     await expect(page.getByRole('link', { name: 'Sort by URL descending' })).toHaveAttribute(
       'href',
       /status=down/,
@@ -229,6 +243,7 @@ test.describe('Monitors list filter and search', () => {
     await expect(page).toHaveURL(/sort=URL/);
     await expect(page).toHaveURL(/order=asc/);
 
+    // Edit передаёт return_to с текущими filter/sort query params.
     await page.getByRole('row', { name: /alpha\.example\.com/ }).getByRole('link', { name: 'Edit' }).click();
     await expect(page).toHaveURL(/return_to=/);
     await page.locator('#name').fill('Alpha Renamed');
@@ -261,6 +276,7 @@ test.describe('Monitors list filter and search', () => {
     await expect(page).toHaveURL(/status=down/);
     await expect(page).toHaveURL(/sort=URL/);
 
+    // confirm() на Delete — page.once принимает диалог один раз.
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('row', { name: /remove\.example\.com/ }).getByRole('button', { name: 'Delete' }).click();
 

@@ -1,4 +1,4 @@
-// Package server starts the application HTTP server.
+// Package server запускает HTTP-сервер приложения.
 package server
 
 import (
@@ -30,18 +30,23 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Run starts the HTTP server and background monitoring worker.
+// Run запускает HTTP-сервер и фоновый worker мониторинга.
+// Порядок: worker Start → HTTP Listen → по SIGINT/SIGTERM Shutdown HTTP, затем defer Stop worker.
 func Run(cfg *config.Config, migrations embed.FS) {
+	// migrations передаётся из main для единообразия CLI; HTTP-сервер миграции не применяет.
 	_ = migrations
 
+	// Настраиваем zerolog и режим Gin до создания роутера.
 	setupLogger(cfg.LogLevel)
 	gin.SetMode(cfg.GinMode)
 
+	// gin.New() без дефолтного Logger — логирование через ZerologLogger middleware.
 	r := gin.New()
 	r.Use(middlewares.ZerologLogger())
-	r.Use(middlewares.ErrorCapture())
-	r.Use(gin.Recovery())
+	r.Use(middlewares.ErrorCapture()) // ошибки handler'ов попадают в in-memory applog
+	r.Use(gin.Recovery())               // panic не роняет процесс
 
+	// Подключение к PostgreSQL, шаблоны и фоновый worker — общие зависимости handler'ов.
 	gormDB := database.Connect(cfg.Database)
 	tmpl := loadHTMLTemplates(r)
 	monitorWorker := worker.New(gormDB, cfg)
@@ -49,25 +54,29 @@ func Run(cfg *config.Config, migrations embed.FS) {
 
 	r.Static("/static", "./static")
 
+	// Cookie-сессия: username хранится в подписанной cookie, без server-side store.
 	store := cookie.NewStore([]byte(cfg.SessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/",
-		MaxAge:   86400 * 30,
+		MaxAge:   86400 * 30, // 30 суток
 		HttpOnly: true,
-		Secure:   cfg.SessionSecure,
+		Secure:   cfg.SessionSecure, // true за HTTPS в production
 		SameSite: http.SameSiteLaxMode,
 	})
 	r.Use(sessions.Sessions("go_uptime_session", store))
 
+	// Публичные эндпоинты — без AuthRequired.
 	r.GET("/health", h.Health)
 
 	r.GET("/", func(c *gin.Context) {
+		// Корень сайта ведёт в админку; неавторизованных перехватит AuthRequired на /admin/*.
 		c.Redirect(http.StatusFound, "/admin/")
 	})
 
 	r.GET("/login", h.LoginPage)
 	r.POST("/login", h.Login)
 
+	// Вся админка за middleware AuthRequired — без сессии редирект на /login.
 	admin := r.Group("/admin")
 	admin.Use(middlewares.AuthRequired())
 	{
@@ -104,6 +113,7 @@ func Run(cfg *config.Config, migrations embed.FS) {
 
 		admin.POST("/logout", h.Logout)
 
+		// Dev tools доступны только в development — middleware проверяет GO_UPTIME_ENVIRONMENT.
 		tools := admin.Group("/tools")
 		tools.Use(middlewares.DevelopmentOnly(cfg))
 		{
@@ -118,6 +128,7 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		}
 	}
 
+	// Playwright API — деструктивные REST-эндпоинты для e2e; только development.
 	if cfg.EnablePlaywrightAPI {
 		if !cfg.IsDevelopment() {
 			log.Fatal().Msg("Playwright API requires GO_UPTIME_ENVIRONMENT=development")
@@ -132,23 +143,27 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		}
 	}
 
-	// Playwright e2e truncates tables and seeds in-memory logs while the process runs.
-	// Keep the worker "running" for /health, but pause checks so they cannot race clears
-	// or append extra heartbeats / monitor-request rows mid-assertion.
+	// Playwright e2e очищает таблицы и заполняет in-memory логи, пока процесс работает.
+	// Worker остаётся «running» для /health, но проверки приостанавливаются, чтобы они не гонялись
+	// с TRUNCATE/seed и не портили assertions (лишние heartbeats, monitor-request в applog).
 	if cfg.EnablePlaywrightAPI {
+		// Pause до Start: e2e не должны гоняться с TRUNCATE/seed параллельно с проверками.
 		monitorWorker.Pause()
 	}
+	// Worker стартует до HTTP — фоновые проверки идут, пока сервер принимает запросы.
 	monitorWorker.Start()
-	defer monitorWorker.Stop()
+	defer monitorWorker.Stop() // Stop выполнится при выходе из Run, после Shutdown HTTP
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
+		// 65s > urlcheck.RequestTimeout (30s): handler успевает дождаться probe/check до обрыва записи ответа.
 		WriteTimeout: 65 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 
+	// ListenAndServe блокирует goroutine; основной поток ждёт SIGINT/SIGTERM.
 	go func() {
 		log.Info().Str("port", cfg.HTTPPort).Msg("starting server")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -156,11 +171,13 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		}
 	}()
 
+	// Graceful shutdown: ждём сигнал ОС, затем мягко закрываем HTTP-сервер.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Info().Msg("shutting down server")
 
+	// Сначала корректно останавливаем HTTP; defer monitorWorker.Stop() выполнится при выходе из Run.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
@@ -172,10 +189,12 @@ func setupLogger(level string) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	l, err := zerolog.ParseLevel(level)
 	if err != nil {
+		// Некорректный GO_UPTIME_LOG_LEVEL — безопасный fallback на info.
 		l = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(l)
 
+	// MultiLevelWriter: stderr для оператора + CaptureWriter в память для /admin/logs.
 	capture := applog.NewCaptureWriter()
 	log.Logger = zerolog.New(
 		zerolog.MultiLevelWriter(os.Stderr, capture),
@@ -216,6 +235,7 @@ func loadHTMLTemplates(r *gin.Engine) *template.Template {
 
 func monitorStatusLabel(isUp *bool, lastChecked *time.Time) string {
 	if lastChecked == nil {
+		// Монитор ещё ни разу не проверялся — статус неизвестен.
 		return "Unknown"
 	}
 	if isUp != nil && *isUp {
@@ -226,7 +246,7 @@ func monitorStatusLabel(isUp *bool, lastChecked *time.Time) string {
 
 func monitorStatusClass(isUp *bool, lastChecked *time.Time) string {
 	if lastChecked == nil {
-		return "text-bg-secondary"
+		return "text-bg-secondary" // серый бейдж для Unknown
 	}
 	if isUp != nil && *isUp {
 		return "text-bg-success"
@@ -234,7 +254,7 @@ func monitorStatusClass(isUp *bool, lastChecked *time.Time) string {
 	return "text-bg-danger"
 }
 
-// formatResponseTime renders a stored response time in milliseconds for templates.
+// formatResponseTime форматирует сохранённое время ответа в миллисекундах для шаблонов.
 func formatResponseTime(ms *int) string {
 	if ms == nil {
 		return "—"
@@ -242,17 +262,17 @@ func formatResponseTime(ms *int) string {
 	return fmt.Sprintf("%d ms", *ms)
 }
 
-// formatUptimePercent renders an uptime percentage string or a dash when data is missing.
-// summary is the aggregated uptime window shown in admin templates.
+// formatUptimePercent форматирует строку процента uptime или прочерк, если данных нет.
+// summary — агрегированное окно uptime, показываемое в admin-шаблонах.
 func formatUptimePercent(summary models.UptimeSummary) string {
 	if !summary.HasData() {
-		return "—"
+		return "—" // недостаточно проверок для расчёта процента
 	}
 	return fmt.Sprintf("%.2f%%", summary.Percent())
 }
 
-// checkIntervalFormValue returns the monitor interval for HTML forms.
-// monitor is the MonitorURL being edited; an empty string means inherit the global setting.
+// checkIntervalFormValue возвращает интервал монитора для HTML-форм.
+// monitor — редактируемый MonitorURL; пустая строка означает наследование глобальной настройки.
 func checkIntervalFormValue(monitor models.MonitorURL) string {
 	if monitor.CheckIntervalSeconds == nil {
 		return ""
@@ -260,12 +280,13 @@ func checkIntervalFormValue(monitor models.MonitorURL) string {
 	return strconv.Itoa(*monitor.CheckIntervalSeconds)
 }
 
-// uptimePercentClass returns a Bootstrap text color class for an uptime percentage value.
+// uptimePercentClass возвращает Bootstrap CSS-класс цвета текста для значения процента uptime.
 func uptimePercentClass(summary models.UptimeSummary) string {
 	if !summary.HasData() {
 		return "text-muted"
 	}
 	pct := summary.Percent()
+	// Цвет текста по порогам SLA: зелёный ≥99%, жёлтый ≥95%, иначе красный.
 	switch {
 	case pct >= 99:
 		return "text-success"

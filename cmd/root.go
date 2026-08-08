@@ -1,4 +1,4 @@
-// Package cmd defines application CLI commands built on Cobra.
+// Package cmd определяет CLI-команды приложения на базе Cobra.
 package cmd
 
 import (
@@ -29,17 +29,18 @@ var (
 	}
 )
 
-// Init configures the CLI with embedded migrations. Configuration is loaded lazily when commands run.
+// Init настраивает CLI со встроенными миграциями. Конфигурация загружается лениво при запуске команд.
 func Init(mig embed.FS) {
 	migrations = mig
 	registerCommands()
 }
 
-// ensureConfig loads configuration from the environment on first access.
+// ensureConfig загружает конфигурацию из окружения при первом обращении.
 func ensureConfig() *config.Config {
 	if cfg != nil {
 		return cfg
 	}
+	// Ленивая загрузка: db-* команды и server делят один экземпляр конфига.
 	c, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load configuration")
@@ -51,7 +52,7 @@ func ensureConfig() *config.Config {
 	return c
 }
 
-// Execute runs the CLI.
+// Execute запускает CLI.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -64,6 +65,7 @@ func registerCommands() {
 		return
 	}
 	commandsRegistered = true
+	// Все подкоманды регистрируются один раз при Init().
 	rootCmd.AddCommand(
 		serverCmd(),
 		dbUsersCreateCmd(),
@@ -81,6 +83,7 @@ func registerCommands() {
 }
 
 func connectDB() *gorm.DB {
+	// Каждая db-* команда открывает своё подключение через ensureConfig().
 	return database.Connect(ensureConfig().Database)
 }
 

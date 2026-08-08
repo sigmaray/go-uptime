@@ -7,13 +7,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Безопасный return_to после create/edit/delete монитора: только whitelist пути списка,
+// чтобы open redirect через поле формы был невозможен.
+
 const monitorsListPath = "/admin/monitors"
 
-// monitorsListReturnURL reads a user-supplied return_to value from the request and
-// returns a safe monitors list URL. c is the Gin request context; return_to may be a
-// form field (POST) or query parameter (GET). Invalid or missing values fall back to
-// the bare monitors list path.
+// monitorsListReturnURL читает пользовательское значение return_to из запроса и
+// возвращает безопасный URL списка мониторов. c — контекст Gin-запроса; return_to может быть
+// полем формы (POST) или query-параметром (GET). Некорректные или отсутствующие значения
+// приводят к базовому пути списка мониторов.
 func monitorsListReturnURL(c *gin.Context) string {
+	// POST-форма приоритетнее query (edit form vs GET-ссылки).
 	raw := strings.TrimSpace(c.PostForm("return_to"))
 	if raw == "" {
 		raw = strings.TrimSpace(c.Query("return_to"))
@@ -21,10 +25,12 @@ func monitorsListReturnURL(c *gin.Context) string {
 	return safeMonitorsListReturnURL(raw)
 }
 
-// safeMonitorsListReturnURL validates raw as a relative return URL for the monitors
-// list page. raw is typically a return_to form or query value that may include list
-// filters, sort, and page. Only paths exactly equal to /admin/monitors with an
-// optional query string are accepted; anything else returns /admin/monitors.
+// safeMonitorsListReturnURL проверяет raw как относительный return URL для страницы
+// списка мониторов. Whitelist намеренно узкий:
+//   • только путь /admin/monitors (сохраняем фильтры/сортировку/страницу в query);
+//   • отклоняются абсолютные URL, другие хосты, scheme и path traversal — иначе злоумышленник
+//     мог бы подставить return_to=https://evil.example после успешного POST.
+// Некорректные значения безопасно сводятся к /admin/monitors без query.
 func safeMonitorsListReturnURL(raw string) string {
 	if raw == "" {
 		return monitorsListPath
@@ -34,15 +40,17 @@ func safeMonitorsListReturnURL(raw string) string {
 	if err != nil {
 		return monitorsListPath
 	}
+	// Отклоняем абсолютные URL, другие хосты, userinfo — защита от open redirect.
 	if u.Scheme != "" || u.Opaque != "" || u.User != nil || u.Host != "" {
 		return monitorsListPath
 	}
 	if u.Path != monitorsListPath {
-		return monitorsListPath
+		return monitorsListPath // только /admin/monitors, не /admin/users и т.д.
 	}
 
 	if u.RawQuery == "" {
 		return monitorsListPath
 	}
+	// Query (фильтры, sort, page) сохраняем — path уже проверен.
 	return monitorsListPath + "?" + u.RawQuery
 }

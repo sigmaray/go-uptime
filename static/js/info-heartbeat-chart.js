@@ -2,9 +2,9 @@
   'use strict';
 
   /**
-   * Reads a CSS custom property from :root with a fallback.
-   * name is the CSS variable including the leading dashes.
-   * fallback is used when the variable is missing or empty.
+   * Читает CSS custom property из :root с запасным значением.
+   * name — CSS-переменная с ведущими дефисами.
+   * fallback — если переменная отсутствует или пуста.
    */
   function cssVar(name, fallback) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -12,8 +12,8 @@
   }
 
   /**
-   * Parses the JSON payload embedded next to the chart canvas.
-   * root is the [data-info-heartbeat-chart] container element.
+   * Разбирает JSON рядом с canvas диаграммы.
+   * root — контейнер [data-info-heartbeat-chart].
    */
   function readChartData(root) {
     const dataEl = root.querySelector('[data-info-heartbeat-chart-data]');
@@ -24,9 +24,9 @@
   }
 
   /**
-   * Builds Chart.js stacked bar options for the past-hour heartbeat chart.
-   * labels are HH:MM tick labels for each minute.
-   * successCounts and failedCounts are aligned per-minute series.
+   * Собирает опции Chart.js stacked bar для диаграммы heartbeats за час.
+   * labels — подписи HH:MM для каждой минуты.
+   * successCounts и failedCounts — выровненные поминутные ряды.
    */
   function createChartConfig(labels, successCounts, failedCounts) {
     const colorUp = cssVar('--info-color-up', '#1f7a54');
@@ -131,8 +131,8 @@
   }
 
   /**
-   * Initializes one heartbeat hour chart from its data-* hooks.
-   * root is a [data-info-heartbeat-chart] element containing canvas + JSON.
+   * Инициализирует одну часовую диаграмму heartbeats по data-* хукам.
+   * root — элемент [data-info-heartbeat-chart] с canvas и JSON.
    */
   function initHeartbeatChart(root) {
     if (typeof Chart === 'undefined') {

@@ -6,38 +6,39 @@ import (
 )
 
 const (
-	// minutelyStatRetention is how long per-minute uptime buckets are kept.
+	// minutelyStatRetention — как долго хранятся минутные bucket uptime.
 	minutelyStatRetention = 24 * time.Hour
-	// hourlyStatRetention is how long per-hour uptime buckets are kept.
+	// hourlyStatRetention — как долго хранятся часовые bucket uptime.
 	hourlyStatRetention = 30 * 24 * time.Hour
-	// dailyStatRetention is how long per-day uptime buckets are kept.
+	// dailyStatRetention — как долго хранятся дневные bucket uptime.
 	dailyStatRetention = 365 * 24 * time.Hour
-	// uptimeHistoryMinutes is how many one-minute slots the monitor list chart shows.
+	// uptimeHistoryMinutes — сколько одноминутных слотов показывает график списка мониторов.
 	uptimeHistoryMinutes = 30
 )
 
-// UptimeBarState classifies one minute slot in the 30-minute uptime chart.
+// UptimeBarState классифицирует один минутный слот на 30-минутном графике uptime.
 type UptimeBarState string
 
 const (
-	// UptimeBarNoData marks a minute before the monitor existed or without check data.
+	// UptimeBarNoData помечает минуту до создания монитора или без данных проверок.
 	UptimeBarNoData UptimeBarState = "nodata"
-	// UptimeBarUp marks a minute where the monitor was fully up.
+	// UptimeBarUp помечает минуту, когда монитор был полностью доступен.
 	UptimeBarUp UptimeBarState = "up"
-	// UptimeBarDown marks a minute where the monitor was fully down.
+	// UptimeBarDown помечает минуту, когда монитор был полностью недоступен.
 	UptimeBarDown UptimeBarState = "down"
-	// UptimeBarMixed marks a minute with partial uptime within the bucket.
+	// UptimeBarMixed помечает минуту с частичным uptime внутри bucket.
 	UptimeBarMixed UptimeBarState = "mixed"
 )
 
-// UptimeHistoryBar is one minute in the recent uptime strip shown on monitor pages.
+// UptimeHistoryBar — одна минута на недавней полосе uptime, показываемой на страницах мониторов.
 type UptimeHistoryBar struct {
 	BucketAt time.Time
 	State    UptimeBarState
 }
 
-// Title returns a tooltip describing the minute bucket state.
+// Title возвращает подсказку, описывающую состояние минутного bucket.
 func (b UptimeHistoryBar) Title() string {
+	// Текст подсказки для HTML title/minibar — время минуты + классификация состояния.
 	switch b.State {
 	case UptimeBarUp:
 		return b.BucketAt.Format("15:04") + " — Up"
@@ -50,7 +51,7 @@ func (b UptimeHistoryBar) Title() string {
 	}
 }
 
-// StatMinutely stores uptime seconds aggregated into one-minute buckets (24h window).
+// StatMinutely хранит секунды uptime, агрегированные в одноминутные bucket (окно 24 ч).
 type StatMinutely struct {
 	MonitorURLID uint      `gorm:"primaryKey"`
 	BucketAt     time.Time `gorm:"primaryKey"`
@@ -58,10 +59,10 @@ type StatMinutely struct {
 	TotalSeconds int       `gorm:"not null;default:0"`
 }
 
-// TableName returns the database table name for StatMinutely.
+// TableName возвращает имя таблицы базы данных для StatMinutely.
 func (StatMinutely) TableName() string { return "stat_minutely" }
 
-// StatHourly stores uptime seconds aggregated into one-hour buckets (30d window).
+// StatHourly хранит секунды uptime, агрегированные в часовые bucket (окно 30 д).
 type StatHourly struct {
 	MonitorURLID uint      `gorm:"primaryKey"`
 	BucketAt     time.Time `gorm:"primaryKey"`
@@ -69,10 +70,10 @@ type StatHourly struct {
 	TotalSeconds int       `gorm:"not null;default:0"`
 }
 
-// TableName returns the database table name for StatHourly.
+// TableName возвращает имя таблицы базы данных для StatHourly.
 func (StatHourly) TableName() string { return "stat_hourly" }
 
-// StatDaily stores uptime seconds aggregated into one-day buckets (365d window).
+// StatDaily хранит секунды uptime, агрегированные в дневные bucket (окно 365 д).
 type StatDaily struct {
 	MonitorURLID uint      `gorm:"primaryKey"`
 	BucketAt     time.Time `gorm:"primaryKey"`
@@ -80,30 +81,32 @@ type StatDaily struct {
 	TotalSeconds int       `gorm:"not null;default:0"`
 }
 
-// TableName returns the database table name for StatDaily.
+// TableName возвращает имя таблицы базы данных для StatDaily.
 func (StatDaily) TableName() string { return "stat_daily" }
 
-// UptimeSummary holds raw uptime seconds for one reporting window.
+// UptimeSummary хранит сырые секунды uptime для одного отчётного окна.
 type UptimeSummary struct {
 	UpSeconds    int64
 	TotalSeconds int64
 }
 
-// HasData reports whether any uptime duration was recorded for the window.
+// HasData сообщает, была ли записана какая-либо длительность uptime для окна.
 func (s UptimeSummary) HasData() bool {
 	return s.TotalSeconds > 0
 }
 
-// Percent returns the uptime percentage rounded to two decimal places, or -1 when no data exists.
+// Percent возвращает процент uptime, округлённый до двух знаков после запятой, или -1, если данных нет.
 func (s UptimeSummary) Percent() float64 {
 	if s.TotalSeconds == 0 {
+		// -1 — сигнал шаблону «процент недоступен», а не 0%.
 		return -1
 	}
 	pct := float64(s.UpSeconds) / float64(s.TotalSeconds) * 100
+	// Округление до двух знаков после запятой для UI.
 	return math.Round(pct*100) / 100
 }
 
-// MonitorUptime groups uptime summaries for the standard reporting periods.
+// MonitorUptime группирует сводки uptime для стандартных отчётных периодов.
 type MonitorUptime struct {
 	Hour1   UptimeSummary
 	Hours24 UptimeSummary

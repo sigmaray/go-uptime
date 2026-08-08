@@ -10,19 +10,22 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// healthCheckResult is the outcome of /health dependency probes.
+// /health для оркестраторов (Docker, k8s) и балансировщиков: 200 = процесс готов принимать трафик,
+// 503 = зависимость недоступна — балансировщик не должен слать пользователей на этот инстанс.
+
+// healthCheckResult — результат проверок зависимостей /health.
 type healthCheckResult struct {
-	// OK is true when every required dependency is healthy.
+	// OK — true, когда все обязательные зависимости здоровы.
 	OK bool
-	// Database is "ok" or "unavailable".
+	// Database — "ok" или "unavailable".
 	Database string
-	// Worker is "ok" or "not running".
+	// Worker — "ok" или "not running".
 	Worker string
 }
 
-// evaluateHealth maps probe outcomes into a stable /health payload.
-// dbErr is the database ping error, or nil when the database responded.
-// workerRunning is true when the background monitor worker is active.
+// evaluateHealth преобразует результаты проверок в стабильный payload /health.
+// dbErr — ошибка ping базы данных или nil, если база ответила.
+// workerRunning — true, когда фоновый monitor worker активен.
 func evaluateHealth(dbErr error, workerRunning bool) healthCheckResult {
 	result := healthCheckResult{
 		OK:       true,
@@ -31,19 +34,20 @@ func evaluateHealth(dbErr error, workerRunning bool) healthCheckResult {
 	}
 	if dbErr != nil {
 		result.OK = false
-		result.Database = "unavailable"
+		result.Database = "unavailable" // ping PostgreSQL не прошёл
 	}
 	if !workerRunning {
 		result.OK = false
-		result.Worker = "not running"
+		result.Worker = "not running" // worker не стартовал или уже остановлен
 	}
 	return result
 }
 
-// Health reports process readiness for orchestrators and reverse proxies.
-// It returns 200 when PostgreSQL accepts a ping and the monitor worker is running;
-// otherwise it returns 503 with per-check details (without internal error text).
+// Health сообщает о готовности процесса для оркестраторов и reverse proxy.
+// 200 OK — PostgreSQL отвечает на ping и monitor worker запущен: приложение может проверять URL и слать уведомления.
+// 503 Service Unavailable — хотя бы одна проверка провалена; тело JSON описывает, что именно (без текста внутренних ошибок БД).
 func (h *Handler) Health(c *gin.Context) {
+	// Короткий таймаут — балансировщик не должен ждать долго.
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 	defer cancel()
 
@@ -67,24 +71,24 @@ func (h *Handler) Health(c *gin.Context) {
 	}
 	if !result.OK {
 		body["status"] = "unhealthy"
-		c.JSON(http.StatusServiceUnavailable, body)
+		c.JSON(http.StatusServiceUnavailable, body) // 503 — инстанс снять с балансировки
 		return
 	}
 	c.JSON(http.StatusOK, body)
 }
 
-// pingDatabase verifies that the application can reach PostgreSQL.
-// ctx bounds how long the ping may wait before failing.
+// pingDatabase проверяет, что приложение может достичь PostgreSQL.
+// ctx ограничивает время ожидания ping до сбоя.
 func (h *Handler) pingDatabase(ctx context.Context) error {
 	if h.DB == nil {
 		return errHealthDatabaseMissing
 	}
-	sqlDB, err := h.DB.DB()
+	sqlDB, err := h.DB.DB() // *sql.DB из пула GORM
 	if err != nil {
 		return err
 	}
 	return sqlDB.PingContext(ctx)
 }
 
-// errHealthDatabaseMissing is returned when the handler has no GORM handle.
+// errHealthDatabaseMissing возвращается, когда у обработчика нет GORM handle.
 var errHealthDatabaseMissing = errors.New("database handle is not configured")

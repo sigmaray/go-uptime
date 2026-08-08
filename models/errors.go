@@ -6,15 +6,16 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// postgresUniqueViolation is the PostgreSQL SQLSTATE for unique_violation.
+// postgresUniqueViolation — SQLSTATE PostgreSQL для unique_violation.
 const postgresUniqueViolation = "23505"
 
-// IsUniqueViolation reports whether err is a PostgreSQL unique constraint violation.
-// err is any persistence error returned by GORM or the database driver.
-// It is used by handlers to map duplicate-key failures to user-facing conflict responses.
+// IsUniqueViolation сообщает, является ли err нарушением уникального ограничения PostgreSQL.
+// err — любая ошибка персистентности, возвращённая GORM или драйвером базы данных.
+// Используется обработчиками для преобразования ошибок дублирования ключа в ответы о конфликте для пользователя.
 func IsUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
+		// SQLSTATE 23505 — unique_violation в PostgreSQL.
 		return pgErr.Code == postgresUniqueViolation
 	}
 	return false

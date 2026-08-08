@@ -2,10 +2,10 @@
   'use strict';
 
   /**
-   * showCopyStatus updates the short status text next to the copy button.
-   * statusEl is the element that displays feedback.
-   * text is the message to show (empty clears the status).
-   * isError marks the message as a failure when true.
+   * showCopyStatus обновляет короткий статус рядом с кнопкой копирования.
+   * statusEl — элемент для обратной связи.
+   * text — сообщение (пустая строка очищает статус).
+   * isError — true, если сообщение об ошибке.
    */
   function showCopyStatus(statusEl, text, isError) {
     if (!statusEl) {
@@ -17,8 +17,8 @@
   }
 
   /**
-   * copyText writes text into the system clipboard.
-   * text is the diagnostics JSON string to copy.
+   * copyText записывает текст в системный буфер обмена.
+   * text — JSON-строка diagnostics для копирования.
    */
   async function copyText(text) {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {

@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UsersList displays the user list.
+// UsersList отображает список пользователей.
 func (h *Handler) UsersList(c *gin.Context) {
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
@@ -44,7 +44,7 @@ func (h *Handler) UsersList(c *gin.Context) {
 	}, PageOptions{Title: "Users", ActiveNav: "users"})
 }
 
-// NewUserPage displays the user creation form.
+// NewUserPage отображает форму создания пользователя.
 func (h *Handler) NewUserPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/users/new.html", gin.H{}, PageOptions{
 		Title:     "Create User",
@@ -52,7 +52,7 @@ func (h *Handler) NewUserPage(c *gin.Context) {
 	})
 }
 
-// CreateUser handles user creation.
+// CreateUser обрабатывает создание пользователя.
 func (h *Handler) CreateUser(c *gin.Context) {
 	var input forms.CreateUserInput
 	if err := c.ShouldBind(&input); err != nil {
@@ -73,6 +73,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	repo := repository.NewUserRepository(h.DB)
 	_, err := repo.CreateUser(input.Username, input.Password)
 	if err != nil {
+		// Unique username или ошибка hash — одно сообщение для пользователя.
 		h.renderPage(c, http.StatusInternalServerError, "admin/users/new.html", gin.H{
 			"Error":    "Failed to create user (maybe username already exists)",
 			"Username": input.Username,
@@ -84,7 +85,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	redirectWithFlash(c, "/admin/users", flashSavedMessage)
 }
 
-// EditUserPage displays the user edit form.
+// EditUserPage отображает форму редактирования пользователя.
 func (h *Handler) EditUserPage(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -103,7 +104,7 @@ func (h *Handler) EditUserPage(c *gin.Context) {
 	}, PageOptions{Title: "Edit User", ActiveNav: "users"})
 }
 
-// UpdateUser handles user updates.
+// UpdateUser обрабатывает обновление пользователя.
 func (h *Handler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -136,6 +137,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 	user.Username = input.Username
 	if input.Password != "" {
+		// Пустой пароль в форме = не менять hash.
 		hash, err := models.HashPassword(input.Password)
 		if err != nil {
 			h.renderPage(c, http.StatusInternalServerError, "admin/users/edit.html", gin.H{
@@ -159,7 +161,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	redirectWithFlash(c, "/admin/users", flashSavedMessage)
 }
 
-// DeleteUser deletes a user.
+// DeleteUser удаляет пользователя.
 func (h *Handler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -173,6 +175,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	// Username нужен только для applog до DELETE.
 	if err := h.DB.Delete(&models.User{}, id).Error; err != nil {
 		c.Status(http.StatusInternalServerError)
 		return

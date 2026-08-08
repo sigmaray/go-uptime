@@ -1,5 +1,9 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
 
+// E2e-тесты пагинации админ-списков: users, monitors, heartbeats, incidents, logs, requests, errors.
+// Общий helper expectAdminListPagination проверяет 100 строк на page 1 и переход на page 2.
+
+/** POST к dev-only Playwright API; падает тест, если сервер вернул не 2xx. */
 async function apiCall(request: APIRequestContext, endpoint: string, data: Record<string, unknown> = {}) {
   const response = await request.post(`/api/playwright/${endpoint}`, { data });
   const text = await response.text();
@@ -7,6 +11,7 @@ async function apiCall(request: APIRequestContext, endpoint: string, data: Recor
   return JSON.parse(text);
 }
 
+/** Логин admin + проверка успешного входа (timeout 15s — Docker/воркер могут стартовать медленно). */
 async function login(page: Page, request: APIRequestContext) {
   await apiCall(request, 'clear-table', { table: 'users' });
   await apiCall(request, 'create-user', { username: 'admin', password: 'password123' });
@@ -19,6 +24,10 @@ async function login(page: Page, request: APIRequestContext) {
   await expect(page).toHaveURL('/admin/', { timeout: 15000 });
 }
 
+/**
+ * Проверяет стандартную пагинацию админ-таблицы: 100 строк на первой странице,
+ * активная «1», переход на «2» с ожидаемым числом строк и сохранением totalCountText.
+ */
 async function expectAdminListPagination(
   page: Page,
   path: string,
@@ -48,13 +57,13 @@ async function expectAdminListPagination(
 test.describe('Admin list pagination', () => {
   test('paginates users', async ({ page, request }) => {
     await login(page, request);
+    // login создаёт одного admin; добавляем ещё 101 пользователя → 102 всего, на page 2 — 2 строки.
     await apiCall(request, 'sql', {
       query: `INSERT INTO users (username, password_hash, created_at, updated_at)
               SELECT 'paguser' || n, 'hash', NOW(), NOW()
               FROM generate_series(1, 101) AS n`,
     });
 
-    // login creates one admin user, then 101 more are inserted
     await expectAdminListPagination(page, '/admin/users', 'Users', '.users-table', 2, '102 users.');
   });
 
@@ -110,6 +119,7 @@ test.describe('Admin list pagination', () => {
 
   test('paginates application logs', async ({ page, request }) => {
     await login(page, request);
+    // seed-applog — Playwright API для in-memory applog, не SQL.
     await apiCall(request, 'clear-applog');
     await apiCall(request, 'seed-applog', { kind: 'events', count: 101 });
 

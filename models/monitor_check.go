@@ -7,37 +7,37 @@ import (
 )
 
 const (
-	// monitorCheckRetention is the minimum age before a check may be pruned.
+	// monitorCheckRetention — минимальный возраст, после которого проверку можно удалить.
 	monitorCheckRetention = 24 * time.Hour
-	// maxMonitorChecksPerMonitor is how many recent checks are always kept per monitor.
+	// maxMonitorChecksPerMonitor — сколько последних проверок всегда сохраняется для каждого монитора.
 	maxMonitorChecksPerMonitor = 200
 )
 
 const (
-	// MaxRecentHeartbeatsList is how many heartbeats the global list page loads.
+	// MaxRecentHeartbeatsList — сколько heartbeat загружает глобальная страница списка.
 	MaxRecentHeartbeatsList = 500
-	// MaxMonitorDetailHeartbeats is how many heartbeats a monitor detail page loads.
+	// MaxMonitorDetailHeartbeats — сколько heartbeat загружает страница деталей монитора.
 	MaxMonitorDetailHeartbeats = 200
-	// HeartbeatHourMinutes is how many one-minute buckets the admin info heartbeat chart covers.
+	// HeartbeatHourMinutes — сколько одноминутных bucket покрывает heartbeat-график в админке.
 	HeartbeatHourMinutes = 60
 )
 
-// HeartbeatMinuteCount is successful and failed heartbeat totals for one minute bucket.
+// HeartbeatMinuteCount — суммы успешных и неудачных heartbeat для одного минутного bucket.
 type HeartbeatMinuteCount struct {
-	// BucketAt is the start of the minute (UTC, truncated).
+	// BucketAt — начало минуты (UTC, усечённое).
 	BucketAt time.Time
-	// Success is how many heartbeats reported up in this minute.
+	// Success — сколько heartbeat сообщили «up» за эту минуту.
 	Success int64
-	// Failed is how many heartbeats reported down in this minute.
+	// Failed — сколько heartbeat сообщили «down» за эту минуту.
 	Failed int64
 }
 
-// Total returns Success + Failed for the minute.
+// Total возвращает Success + Failed за минуту.
 func (c HeartbeatMinuteCount) Total() int64 {
 	return c.Success + c.Failed
 }
 
-// MonitorCheck stores the result of a single HTTP availability check.
+// MonitorCheck хранит результат одной проверки HTTP-доступности.
 type MonitorCheck struct {
 	ID             uint       `gorm:"primaryKey"`
 	MonitorURLID   uint       `gorm:"not null;index"`
@@ -47,13 +47,14 @@ type MonitorCheck struct {
 	ResponseTimeMs *int
 }
 
-// RecordMonitorCheck persists one check result for uptime history and updates aggregated uptime stats.
-// db is the database handle used for persistence.
-// monitorID is the monitor_urls.id that was checked.
-// checkedAt is when the check finished.
-// isUp is whether the target responded successfully.
-// responseTimeMs is the optional measured latency in milliseconds.
+// RecordMonitorCheck сохраняет один результат проверки для истории uptime и обновляет агрегированную статистику.
+// db — дескриптор базы данных для персистентности.
+// monitorID — monitor_urls.id проверенного монитора.
+// checkedAt — время завершения проверки.
+// isUp — успешно ли ответила цель.
+// responseTimeMs — необязательная измеренная задержка в миллисекундах.
 func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp bool, responseTimeMs *int) error {
+	// Сначала обновляем агрегированную uptime-статистику по интервалу с предыдущей проверкой.
 	if err := UpdateUptimeStats(db, monitorID, checkedAt, isUp); err != nil {
 		return err
 	}
@@ -64,21 +65,22 @@ func RecordMonitorCheck(db *gorm.DB, monitorID uint, checkedAt time.Time, isUp b
 		IsUp:           isUp,
 		ResponseTimeMs: responseTimeMs,
 	}
+	// Затем сохраняем сырую строку heartbeat для истории и графиков.
 	return db.Create(&check).Error
 }
 
-// CountMonitorChecks returns the total number of heartbeats across all monitors.
+// CountMonitorChecks возвращает общее число heartbeat по всем мониторам.
 func CountMonitorChecks(db *gorm.DB) (int64, error) {
 	var count int64
 	err := db.Model(&MonitorCheck{}).Count(&count).Error
 	return count, err
 }
 
-// LoadAllMonitorChecksPage loads one page of heartbeats across all monitors ordered newest first.
+// LoadAllMonitorChecksPage загружает одну страницу heartbeat по всем мониторам, отсортированную от новых к старым.
 //
-// db is the database handle used for the query.
-// page is the one-based page number.
-// perPage is how many heartbeats each page contains.
+// db — дескриптор базы данных для запроса.
+// page — номер страницы, начиная с 1.
+// perPage — сколько heartbeat содержит каждая страница.
 func LoadAllMonitorChecksPage(db *gorm.DB, page, perPage int) ([]MonitorCheck, error) {
 	if perPage < 1 {
 		perPage = AdminListPageSize
@@ -99,10 +101,11 @@ func LoadAllMonitorChecksPage(db *gorm.DB, page, perPage int) ([]MonitorCheck, e
 	return checks, nil
 }
 
-// LoadRecentMonitorChecks returns the most recent heartbeats across all monitors.
-// limit caps how many rows are returned; values above MaxRecentHeartbeatsList are clamped.
+// LoadRecentMonitorChecks возвращает самые последние heartbeat по всем мониторам.
+// limit ограничивает число возвращаемых строк; значения выше MaxRecentHeartbeatsList усекаются.
 func LoadRecentMonitorChecks(db *gorm.DB, limit int) ([]MonitorCheck, error) {
 	if limit <= 0 || limit > MaxRecentHeartbeatsList {
+		// Защита от слишком больших limit в query string.
 		limit = MaxRecentHeartbeatsList
 	}
 
@@ -113,14 +116,15 @@ func LoadRecentMonitorChecks(db *gorm.DB, limit int) ([]MonitorCheck, error) {
 	return checks, nil
 }
 
-// LoadMonitorChecks returns heartbeats for one monitor ordered newest first.
-// limit caps how many rows are returned; values above MaxMonitorDetailHeartbeats are clamped.
+// LoadMonitorChecks возвращает heartbeat для одного монитора, отсортированные от новых к старым.
+// limit ограничивает число возвращаемых строк; значения выше MaxMonitorDetailHeartbeats усекаются.
 func LoadMonitorChecks(db *gorm.DB, monitorID uint, limit int) ([]MonitorCheck, error) {
 	if limit <= 0 || limit > MaxMonitorDetailHeartbeats {
 		limit = MaxMonitorDetailHeartbeats
 	}
 
 	var checks []MonitorCheck
+	// checked_at DESC — последние heartbeat сверху на странице монитора.
 	if err := db.Where("monitor_url_id = ?", monitorID).
 		Order("checked_at desc").
 		Limit(limit).
@@ -130,19 +134,19 @@ func LoadMonitorChecks(db *gorm.DB, monitorID uint, limit int) ([]MonitorCheck, 
 	return checks, nil
 }
 
-// CountMonitorChecksForMonitor returns how many heartbeats exist for a monitor.
+// CountMonitorChecksForMonitor возвращает, сколько heartbeat существует для монитора.
 func CountMonitorChecksForMonitor(db *gorm.DB, monitorID uint) (int64, error) {
 	var count int64
 	err := db.Model(&MonitorCheck{}).Where("monitor_url_id = ?", monitorID).Count(&count).Error
 	return count, err
 }
 
-// LoadMonitorChecksPage loads one page of heartbeats for a monitor ordered newest first.
+// LoadMonitorChecksPage загружает одну страницу heartbeat для монитора, отсортированную от новых к старым.
 //
-// db is the database handle used for the query.
-// monitorID is the `monitor_urls.id` whose checks are loaded.
-// page is the one-based page number.
-// perPage is how many heartbeats each page contains.
+// db — дескриптор базы данных для запроса.
+// monitorID — `monitor_urls.id`, для которого загружаются проверки.
+// page — номер страницы, начиная с 1.
+// perPage — сколько heartbeat содержит каждая страница.
 func LoadMonitorChecksPage(db *gorm.DB, monitorID uint, page, perPage int) ([]MonitorCheck, error) {
 	if perPage < 1 {
 		perPage = MonitorDetailListPageSize
@@ -163,16 +167,18 @@ func LoadMonitorChecksPage(db *gorm.DB, monitorID uint, page, perPage int) ([]Mo
 	return checks, nil
 }
 
-// CountHeartbeatsByMinute aggregates heartbeats into one-minute success/failure buckets.
-// db is the database handle used to load recent heartbeats.
-// now is the reference clock; the window ends at the current truncated minute and spans HeartbeatHourMinutes.
-// Returned rows only include minutes that had at least one heartbeat; callers fill empty minutes.
+// CountHeartbeatsByMinute агрегирует heartbeat в одноминутные bucket успехов и неудач.
+// db — дескриптор базы данных для загрузки последних heartbeat.
+// now — опорные часы; окно заканчивается на текущей усечённой минуте и охватывает HeartbeatHourMinutes.
+// Возвращаемые строки включают только минуты с хотя бы одним heartbeat; вызывающий код заполняет пустые минуты.
 func CountHeartbeatsByMinute(db *gorm.DB, now time.Time) ([]HeartbeatMinuteCount, error) {
 	windowEnd := now.UTC().Truncate(time.Minute)
 	windowStart := windowEnd.Add(-time.Duration(HeartbeatHourMinutes-1) * time.Minute)
+	// Полуинтервал [windowStart, until): until — exclusive, чтобы включить всю текущую минуту.
 	until := windowEnd.Add(time.Minute)
 
 	var checks []MonitorCheck
+	// Загружаем только checked_at и is_up — меньше трафика из БД.
 	if err := db.Select("checked_at", "is_up").
 		Where("checked_at >= ? AND checked_at < ?", windowStart, until).
 		Find(&checks).Error; err != nil {
@@ -188,6 +194,7 @@ func CountHeartbeatsByMinute(db *gorm.DB, now time.Time) ([]HeartbeatMinuteCount
 			entry = &HeartbeatMinuteCount{BucketAt: bucketAt}
 			byMinute[key] = entry
 		}
+		// Разносим heartbeat по счётчикам success/failed внутри минуты.
 		if check.IsUp {
 			entry.Success++
 		} else {
@@ -199,16 +206,18 @@ func CountHeartbeatsByMinute(db *gorm.DB, now time.Time) ([]HeartbeatMinuteCount
 	for _, entry := range byMinute {
 		counts = append(counts, *entry)
 	}
+	// Разреженный результат: только минуты с ≥1 heartbeat; пустые минуты заполняет UI.
 	return counts, nil
 }
 
-// LoadMonitorChecksSince groups check results by monitor ID since the given time.
+// LoadMonitorChecksSince группирует результаты проверок по ID монитора начиная с указанного времени.
 func LoadMonitorChecksSince(db *gorm.DB, since time.Time) (map[uint][]MonitorCheck, error) {
 	var checks []MonitorCheck
 	if err := db.Where("checked_at >= ?", since).Order("checked_at asc").Find(&checks).Error; err != nil {
 		return nil, err
 	}
 
+	// Группируем по monitor_url_id для пакетной обработки worker/maintenance.
 	byMonitor := make(map[uint][]MonitorCheck, len(checks))
 	for _, check := range checks {
 		byMonitor[check.MonitorURLID] = append(byMonitor[check.MonitorURLID], check)
@@ -216,11 +225,13 @@ func LoadMonitorChecksSince(db *gorm.DB, since time.Time) (map[uint][]MonitorChe
 	return byMonitor, nil
 }
 
-// PruneMonitorChecks deletes checks older than monitorCheckRetention that are not
-// among the maxMonitorChecksPerMonitor most recent checks for their monitor.
+// PruneMonitorChecks удаляет проверки старше monitorCheckRetention, которые не входят
+// в maxMonitorChecksPerMonitor самых последних проверок для своего монитора.
 func PruneMonitorChecks(db *gorm.DB) error {
 	cutoff := time.Now().Add(-monitorCheckRetention)
 
+	// Удаляем только если выполнены ОБА условия: checked_at старше retention И проверка
+	// не входит в maxMonitorChecksPerMonitor последних для своего монитора (rn > лимита).
 	return db.Exec(`
 		WITH ranked AS (
 			SELECT

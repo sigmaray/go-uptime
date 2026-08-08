@@ -15,15 +15,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// MonitorListItem is a monitor row with recent uptime check history for the admin list.
+// MonitorListItem — строка монитора с недавней историей uptime-проверок для списка админки.
 type MonitorListItem struct {
 	models.MonitorURL
 	HistoryBars []models.UptimeHistoryBar
 	Uptime      models.MonitorUptime
 }
 
-// MonitorsList displays the list of monitored URLs with status.
+// MonitorsList отображает список мониторимых URL со статусом.
 func (h *Handler) MonitorsList(c *gin.Context) {
+	// Параметры списка: страница, фильтр, сортировка.
 	page := parseQueryPage(c.Query("page"))
 	perPage := models.AdminListPageSize
 	filter := parseMonitorsListFilter(c)
@@ -35,11 +36,12 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		c.Query("order"),
 		"ID", "URL", "IsUp", "LastCheckedAt", "LastError",
 	)
-	sort.ExtraQuery = filter.QueryValues()
+	sort.ExtraQuery = filter.QueryValues() // фильтры сохраняются в ссылках сортировки/пагинации
 	now := time.Now()
 
 	baseQuery := filter.Apply(h.DB.Model(&models.MonitorURL{}))
 
+	// Сначала COUNT для пагинации; при ошибке показываем пустой список, не 500.
 	var total int64
 	if err := baseQuery.Count(&total).Error; err != nil {
 		applog.AddError("failed to count monitors", err.Error())
@@ -48,7 +50,8 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	page = models.ClampPage(page, total, perPage)
 
 	var monitors []models.MonitorURL
-	// Rebuild the filtered query so Count does not leave statement state on the Find.
+	// GORM переиспользует один и тот же *Statement: после Count на baseQuery в нём
+	// остаётся SELECT count(*). Пересобираем цепочку filter→sort→Find с нуля.
 	query := sort.Apply(filter.Apply(h.DB.Model(&models.MonitorURL{})))
 	if err := query.
 		Offset(models.PageOffset(page, perPage)).
@@ -58,6 +61,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		monitors = nil
 	}
 
+	// ID и CreatedAt нужны для batch-загрузки истории uptime и статистики.
 	monitorIDs := make([]uint, 0, len(monitors))
 	createdAtByID := make(map[uint]time.Time, len(monitors))
 	for _, monitor := range monitors {
@@ -77,6 +81,7 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 		uptimeByMonitor = map[uint]models.MonitorUptime{}
 	}
 
+	// Собираем view model: монитор + полоски истории + агрегированный uptime.
 	items := make([]MonitorListItem, 0, len(monitors))
 	for _, monitor := range monitors {
 		items = append(items, MonitorListItem{
@@ -97,8 +102,9 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 
-// NewMonitorPage displays the URL creation form.
+// NewMonitorPage отображает форму создания URL.
 func (h *Handler) NewMonitorPage(c *gin.Context) {
+	// Шаблону нужно знать, какие каналы уведомлений настроены в Settings.
 	_, notifyData, err := h.monitorNotificationContext()
 	if err != nil {
 		applog.AddError("failed to load notification settings", err.Error())
@@ -109,7 +115,7 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"Input": forms.MonitorURLInput{},
+		"Input": forms.MonitorURLInput{}, // пустая форма
 	}
 	for key, value := range notifyData {
 		data[key] = value
@@ -121,10 +127,11 @@ func (h *Handler) NewMonitorPage(c *gin.Context) {
 	})
 }
 
-// CreateMonitor handles URL creation.
+// CreateMonitor обрабатывает создание URL.
 func (h *Handler) CreateMonitor(c *gin.Context) {
 	var input forms.MonitorURLInput
 	if err := c.ShouldBind(&input); err != nil {
+		// Ошибка bind — показываем форму с сообщением, без redirect.
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
 			"Error":              "Invalid form data",
@@ -140,6 +147,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 		applog.AddError("failed to load notification settings", err.Error())
 	}
 	if err := input.Validate(); err != nil {
+		// Валидация URL, интервала и т.д. — форма с текстом ошибки.
 		_, notifyData, _ := h.monitorNotificationContext()
 		h.renderPage(c, http.StatusBadRequest, "admin/monitors/new.html", gin.H{
 			"Error":              forms.FormatValidationError(err),
@@ -153,6 +161,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	}
 
 	if input.VerifyBeforeCreate {
+		// Опциональная проверка доступности URL до INSERT — пользователь включил галочку.
 		failures := monitorsvc.VerifyReachable(c.Request.Context(), []string{input.URL})
 		if len(failures) > 0 {
 			_, notifyData, _ := h.monitorNotificationContext()
@@ -182,6 +191,7 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 		status := http.StatusInternalServerError
 		errMsg := "Failed to create monitor URL"
 		if models.IsUniqueViolation(err) {
+			// URL уже есть в monitor_urls — конфликт, не 500.
 			status = http.StatusConflict
 			errMsg = monitorsvc.ErrMonitorURLExists
 		}
@@ -201,8 +211,8 @@ func (h *Handler) CreateMonitor(c *gin.Context) {
 	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
-// BulkNewMonitorPage displays the form for creating multiple monitored URLs at once.
-// c is the Gin request context for the authenticated admin session.
+// BulkNewMonitorPage отображает форму для одновременного создания нескольких мониторимых URL.
+// c — контекст Gin-запроса для аутентифицированной сессии админки.
 func (h *Handler) BulkNewMonitorPage(c *gin.Context) {
 	_, notifyData, err := h.monitorNotificationContext()
 	if err != nil {
@@ -226,9 +236,9 @@ func (h *Handler) BulkNewMonitorPage(c *gin.Context) {
 	})
 }
 
-// bulkMonitorFormData builds template data for the bulk create form, including notification context.
-// input is the submitted (or empty) bulk form.
-// errMsg is a user-visible error string; empty when none.
+// bulkMonitorFormData формирует данные шаблона для формы массового создания, включая контекст уведомлений.
+// input — отправленная (или пустая) bulk-форма.
+// errMsg — пользовательская строка ошибки; пусто, если ошибки нет.
 func (h *Handler) bulkMonitorFormData(input forms.MonitorURLBulkInput, errMsg string) gin.H {
 	_, notifyData, _ := h.monitorNotificationContext()
 	return gin.H{
@@ -241,10 +251,10 @@ func (h *Handler) bulkMonitorFormData(input forms.MonitorURLBulkInput, errMsg st
 	}
 }
 
-// BulkCreateMonitors creates multiple monitors from a comma- or newline-separated URL list.
-// Notification flags and optional check interval apply to every created monitor.
-// Each monitor's Name is set to its URL.
-// c is the Gin request context with the POST form body.
+// BulkCreateMonitors создаёт несколько мониторов из списка URL, разделённых запятыми или переводами строк.
+// Флаги уведомлений и необязательный интервал проверки применяются к каждому созданному монитору.
+// Name каждого монитора устанавливается равным его URL.
+// c — контекст Gin-запроса с телом POST-формы.
 func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	var input forms.MonitorURLBulkInput
 	if err := c.ShouldBind(&input); err != nil {
@@ -264,7 +274,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	}
 
 	checkInterval, _ := input.ParseCheckIntervalSeconds()
-	urls := input.ParsedURLs()
+	urls := input.ParsedURLs() // разбор textarea: запятые и переводы строк
 
 	svc := monitorsvc.NewService(h.DB)
 	if conflicts, err := svc.ExistingURLs(urls); err != nil {
@@ -274,6 +284,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 			PageOptions{Title: "Add multiple Monitor URLs", ActiveNav: "monitors"})
 		return
 	} else if len(conflicts) > 0 {
+		// SkipExisting: пропустить уже существующие URL и создать только новые.
 		if !input.SkipExisting {
 			h.renderPage(c, http.StatusConflict, "admin/monitors/bulk_new.html",
 				h.bulkMonitorFormData(input, monitorsvc.URLExistsMessage(conflicts...)),
@@ -287,6 +298,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 		}
 	}
 
+	// VerifyBeforeCreate: «всё или ничего» — один недоступный URL отклоняет весь batch.
 	if input.VerifyBeforeCreate {
 		failures := monitorsvc.VerifyReachable(c.Request.Context(), urls)
 		if len(failures) > 0 {
@@ -298,8 +310,10 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	}
 
 	failedURL := ""
+	// Вся пачка в одной транзакции: при ошибке на одном URL откатываются все INSERT.
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		for _, rawURL := range urls {
+			// Name=URL: у bulk-создания нет отдельного поля имени для каждой строки.
 			monitor := models.MonitorURL{
 				Name:                 rawURL,
 				URL:                  rawURL,
@@ -331,7 +345,7 @@ func (h *Handler) BulkCreateMonitors(c *gin.Context) {
 	redirectWithFlash(c, "/admin/monitors", flashSavedMessage)
 }
 
-// MonitorShowPage renders monitor details and heartbeat history.
+// MonitorShowPage отрисовывает детали монитора и историю heartbeat.
 func (h *Handler) MonitorShowPage(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -345,6 +359,7 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 		return
 	}
 
+	// На странице монитора две независимые пагинации: инциденты и heartbeats.
 	incidentsPage := parseQueryPage(c.Query("incidents_page"))
 	heartbeatsPage := parseQueryPage(c.Query("heartbeats_page"))
 
@@ -376,6 +391,7 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 
 	now := time.Now()
 
+	// Uptime-полоски и процент для одного монитора (не batch, как в списке).
 	historyBars, err := models.BuildUptimeHistoryBars(h.DB, uint(id), monitor.CreatedAt, now)
 	if err != nil {
 		applog.AddError("failed to load monitor uptime history", err.Error())
@@ -387,6 +403,7 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 		applog.AddError("failed to load monitor uptime stats", err.Error())
 	}
 
+	// URL пагинации сохраняет оба query-параметра при переключении страниц.
 	incidentsPagination := buildPaginationView(incidentTotal, incidentsPage, models.MonitorDetailListPageSize, "Incidents", func(page int) string {
 		return buildMonitorShowURL(monitor.ID, page, heartbeatsPage)
 	})
@@ -407,7 +424,7 @@ func (h *Handler) MonitorShowPage(c *gin.Context) {
 	}, PageOptions{Title: displayName, ActiveNav: "monitors"})
 }
 
-// EditMonitorPage displays the URL edit form.
+// EditMonitorPage отображает форму редактирования URL.
 func (h *Handler) EditMonitorPage(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -432,7 +449,7 @@ func (h *Handler) EditMonitorPage(c *gin.Context) {
 
 	data := gin.H{
 		"Monitor":  monitor,
-		"ReturnTo": monitorsListReturnURL(c),
+		"ReturnTo": monitorsListReturnURL(c), // скрытое поле формы для PRG после update/delete
 	}
 	for key, value := range notifyData {
 		data[key] = value
@@ -443,7 +460,7 @@ func (h *Handler) EditMonitorPage(c *gin.Context) {
 	h.renderPage(c, http.StatusOK, "admin/monitors/edit.html", data, PageOptions{Title: "Edit Monitor URL", ActiveNav: "monitors"})
 }
 
-// UpdateMonitor handles URL updates.
+// UpdateMonitor обрабатывает обновление URL.
 func (h *Handler) UpdateMonitor(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -451,6 +468,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		return
 	}
 
+	// Куда вернуться после сохранения — whitelist return_to из формы/query.
 	returnTo := monitorsListReturnURL(c)
 
 	var monitor models.MonitorURL
@@ -477,6 +495,7 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 		applog.AddError("failed to load notification settings", err.Error())
 	}
 	if err := input.Validate(); err != nil {
+		// Подставляем введённые значения в monitor для повторного показа формы.
 		monitor.Name = input.Name
 		monitor.URL = input.URL
 		monitor.CheckIntervalSeconds = nil
@@ -527,8 +546,8 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	redirectWithFlash(c, returnTo, flashSavedMessage)
 }
 
-// DeleteMonitor permanently removes a monitored URL and cascaded related rows.
-// c is the Gin request context with the monitor id path parameter.
+// DeleteMonitor безвозвратно удаляет мониторимый URL и каскадно связанные строки.
+// c — контекст Gin-запроса с path-параметром id монитора.
 func (h *Handler) DeleteMonitor(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -544,6 +563,7 @@ func (h *Handler) DeleteMonitor(c *gin.Context) {
 		return
 	}
 
+	// CASCADE в БД удалит связанные checks и incidents.
 	if err := h.DB.Delete(&models.MonitorURL{}, id).Error; err != nil {
 		c.Status(http.StatusInternalServerError)
 		return

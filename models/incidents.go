@@ -7,27 +7,27 @@ import (
 	"gorm.io/gorm"
 )
 
-// CountIncidents returns the total number of incidents across all monitors.
-// db is the GORM handle used to count incident rows.
+// CountIncidents возвращает общее число инцидентов по всем мониторам.
+// db — дескриптор GORM для подсчёта строк инцидентов.
 func CountIncidents(db *gorm.DB) (int64, error) {
 	var count int64
 	err := db.Model(&Incident{}).Count(&count).Error
 	return count, err
 }
 
-// CountOpenIncidents returns how many incidents are still unresolved.
-// db is the GORM handle used to count open incident rows.
+// CountOpenIncidents возвращает, сколько инцидентов ещё не разрешено.
+// db — дескриптор GORM для подсчёта открытых инцидентов.
 func CountOpenIncidents(db *gorm.DB) (int64, error) {
 	var count int64
 	err := db.Model(&Incident{}).Where("resolved_at IS NULL").Count(&count).Error
 	return count, err
 }
 
-// LoadIncidentsPage loads one page of incident history ordered newest first.
+// LoadIncidentsPage загружает одну страницу истории инцидентов, отсортированную от новых к старым.
 //
-// db is the database handle used for the query.
-// page is the one-based page number.
-// perPage is how many incidents each page contains.
+// db — дескриптор базы данных для запроса.
+// page — номер страницы, начиная с 1.
+// perPage — сколько инцидентов содержит каждая страница.
 func LoadIncidentsPage(db *gorm.DB, page, perPage int) ([]Incident, error) {
 	if perPage < 1 {
 		perPage = AdminListPageSize
@@ -37,6 +37,7 @@ func LoadIncidentsPage(db *gorm.DB, page, perPage int) ([]Incident, error) {
 	}
 
 	var incidents []Incident
+	// Preload MonitorURL — в таблице показываем имя/URL монитора без N+1.
 	err := db.Preload("MonitorURL").
 		Order("started_at desc").
 		Offset(PageOffset(page, perPage)).
@@ -48,20 +49,20 @@ func LoadIncidentsPage(db *gorm.DB, page, perPage int) ([]Incident, error) {
 	return incidents, nil
 }
 
-// CountIncidentsForMonitor returns how many incidents exist for a monitor.
+// CountIncidentsForMonitor возвращает, сколько инцидентов существует для монитора.
 func CountIncidentsForMonitor(db *gorm.DB, monitorID uint) (int64, error) {
 	var count int64
 	err := db.Model(&Incident{}).Where("monitor_url_id = ?", monitorID).Count(&count).Error
 	return count, err
 }
 
-// LoadIncidentsForMonitorPage loads one page of incident history for a monitor
-// ordered by newest first.
+// LoadIncidentsForMonitorPage загружает одну страницу истории инцидентов для монитора,
+// отсортированную от новых к старым.
 //
-// db is the database handle used for the query.
-// monitorID is the `monitor_urls.id` for which incidents are loaded.
-// page is the one-based page number.
-// perPage is how many incidents each page contains.
+// db — дескриптор базы данных для запроса.
+// monitorID — `monitor_urls.id`, для которого загружаются инциденты.
+// page — номер страницы, начиная с 1.
+// perPage — сколько инцидентов содержит каждая страница.
 func LoadIncidentsForMonitorPage(db *gorm.DB, monitorID uint, page, perPage int) ([]Incident, error) {
 	if perPage < 1 {
 		perPage = MonitorDetailListPageSize
@@ -71,6 +72,7 @@ func LoadIncidentsForMonitorPage(db *gorm.DB, monitorID uint, page, perPage int)
 	}
 
 	var incidents []Incident
+	// Фильтр по monitor_url_id — только инциденты одного монитора на странице деталей.
 	err := db.Where("monitor_url_id = ?", monitorID).
 		Order("started_at desc").
 		Offset(PageOffset(page, perPage)).
@@ -82,15 +84,17 @@ func LoadIncidentsForMonitorPage(db *gorm.DB, monitorID uint, page, perPage int)
 	return incidents, nil
 }
 
-// FindOpenIncident finds an open incident for the given monitor.
-// db is the database handle used for the query.
-// monitorURLID is the monitor_urls.id whose open incident is loaded.
-// It returns nil, nil when no open incident exists.
+// FindOpenIncident находит открытый инцидент для указанного монитора.
+// db — дескриптор базы данных для запроса.
+// monitorURLID — monitor_urls.id, для которого загружается открытый инцидент.
+// Возвращает nil, nil, если открытый инцидент отсутствует.
 func FindOpenIncident(db *gorm.DB, monitorURLID uint) (*Incident, error) {
 	var incident Incident
+	// resolved_at IS NULL — единственный открытый инцидент на монитор (гарантия миграции/constraint).
 	err := db.Where("monitor_url_id = ? AND resolved_at IS NULL", monitorURLID).First(&incident).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Нет открытого — не ошибка, caller создаст новый при DOWN.
 			return nil, nil
 		}
 		return nil, err
@@ -98,10 +102,10 @@ func FindOpenIncident(db *gorm.DB, monitorURLID uint) (*Incident, error) {
 	return &incident, nil
 }
 
-// FindOpenIncidentsByMonitorIDs loads open incidents for many monitors in one query.
-// db is the database handle used for the query.
-// monitorURLIDs are the monitor_urls.id values to look up; empty input returns an empty map.
-// The returned map is keyed by monitor_url_id and contains at most one open incident per monitor.
+// FindOpenIncidentsByMonitorIDs загружает открытые инциденты для многих мониторов одним запросом.
+// db — дескриптор базы данных для запроса.
+// monitorURLIDs — значения monitor_urls.id для поиска; пустой ввод возвращает пустую map.
+// Возвращаемая map индексируется по monitor_url_id и содержит не более одного открытого инцидента на монитор.
 func FindOpenIncidentsByMonitorIDs(db *gorm.DB, monitorURLIDs []uint) (map[uint]Incident, error) {
 	out := make(map[uint]Incident, len(monitorURLIDs))
 	if len(monitorURLIDs) == 0 {
@@ -112,18 +116,20 @@ func FindOpenIncidentsByMonitorIDs(db *gorm.DB, monitorURLIDs []uint) (map[uint]
 	if err := db.Where("monitor_url_id IN ? AND resolved_at IS NULL", monitorURLIDs).Find(&incidents).Error; err != nil {
 		return nil, err
 	}
+	// Ключ map — monitor_url_id; при constraint «один open» дубликатов не будет.
 	for _, incident := range incidents {
 		out[incident.MonitorURLID] = incident
 	}
 	return out, nil
 }
 
-// PruneIncidents deletes old resolved incidents to limit data growth.
-// db is the database handle used for deletions.
-// retentionDays controls how long resolved incidents are kept.
-// maxPerMonitor limits how many resolved incidents each monitor may retain.
+// PruneIncidents удаляет старые разрешённые инциденты для ограничения роста данных.
+// db — дескриптор базы данных для удалений.
+// retentionDays определяет, как долго хранятся разрешённые инциденты.
+// maxPerMonitor ограничивает, сколько разрешённых инцидентов может хранить каждый монитор.
 func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	// Фаза 1: удалить разрешённые инциденты старше retentionDays по resolved_at.
 	if err := db.Where("resolved_at IS NOT NULL AND resolved_at < ?", cutoff).
 		Delete(&Incident{}).Error; err != nil {
 		return err
@@ -132,6 +138,8 @@ func PruneIncidents(db *gorm.DB, retentionDays, maxPerMonitor int) error {
 	if maxPerMonitor < 0 {
 		maxPerMonitor = 0
 	}
+	// Фаза 2: для каждого монитора оставить только maxPerMonitor самых свежих разрешённых
+	// (row_number по resolved_at DESC); остальные удалить, даже если ещё «молодые».
 	return db.Exec(`
 		WITH ranked AS (
 			SELECT

@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseURLList(t *testing.T) {
+	// Табличный тест ParseURLList: split по comma/newline, trim, dedupe, CRLF.
 	tests := []struct {
 		name string
 		in   string
@@ -55,7 +56,9 @@ func TestParseURLList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Act.
 			got := ParseURLList(tt.in)
+			// Assert: nil и пустой slice эквивалентны для «нет URL».
 			if len(got) == 0 && len(tt.want) == 0 {
 				return
 			}
@@ -73,15 +76,20 @@ func TestParseURLList(t *testing.T) {
 
 func TestMonitorURLBulkInputValidate(t *testing.T) {
 	t.Run("requires at least one url", func(t *testing.T) {
+		// Arrange: только пробелы и разделители — после ParseURLList nil.
 		input := MonitorURLBulkInput{URLs: "  , \n "}
+		// Assert.
 		if err := input.Validate(); err == nil {
 			t.Fatal("expected validation error")
 		}
 	})
 
 	t.Run("rejects invalid url", func(t *testing.T) {
+		// Arrange: один валидный URL, один мусор.
 		input := MonitorURLBulkInput{URLs: "https://ok.example.com\nnot-a-url"}
+		// Act.
 		err := input.Validate()
+		// Assert: error и упоминание invalid token в сообщении.
 		if err == nil {
 			t.Fatal("expected validation error")
 		}
@@ -91,27 +99,33 @@ func TestMonitorURLBulkInputValidate(t *testing.T) {
 	})
 
 	t.Run("rejects non http scheme", func(t *testing.T) {
+		// Arrange: ftp:// не поддерживается мониторингом HTTP(S).
 		input := MonitorURLBulkInput{URLs: "ftp://files.example.com"}
+		// Assert.
 		if err := input.Validate(); err == nil {
 			t.Fatal("expected validation error for ftp URL")
 		}
 	})
 
 	t.Run("accepts valid urls and interval", func(t *testing.T) {
+		// Arrange: два https URL и интервал 30s (в допустимых bounds).
 		input := MonitorURLBulkInput{
 			URLs:                 "https://a.example.com, https://b.example.com",
 			CheckIntervalSeconds: "30",
 		}
+		// Assert: happy path без ошибок.
 		if err := input.Validate(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("rejects bad interval", func(t *testing.T) {
+		// Arrange: URL валиден, интервал 5s — ниже минимума 10.
 		input := MonitorURLBulkInput{
 			URLs:                 "https://a.example.com",
 			CheckIntervalSeconds: "5",
 		}
+		// Assert.
 		if err := input.Validate(); err == nil {
 			t.Fatal("expected validation error for interval")
 		}

@@ -6,10 +6,11 @@ import (
 )
 
 func TestPruneIncidentsAppliesRetentionAndPerMonitorLimit(t *testing.T) {
+	// Arrange: чистая БД, один монитор, смесь старых/новых resolved и один open incident.
 	db := openTestDB(t)
 	resetUptimeStatTables(t, db)
 
-	// Truncate to microseconds: PostgreSQL timestamptz does not store nanoseconds.
+	// Усечение до микросекунд: PostgreSQL timestamptz не хранит наносекунды.
 	now := time.Now().Truncate(time.Microsecond)
 	monitor := MonitorURL{Name: "Incident prune", URL: "https://incident-prune.example"}
 	if err := db.Create(&monitor).Error; err != nil {
@@ -33,10 +34,12 @@ func TestPruneIncidentsAppliesRetentionAndPerMonitorLimit(t *testing.T) {
 		t.Fatalf("create incidents: %v", err)
 	}
 
+	// Act: retention 90 дней и лимит 2 resolved на монитор.
 	if err := PruneIncidents(db, 90, 2); err != nil {
 		t.Fatalf("PruneIncidents: %v", err)
 	}
 
+	// Assert: остаются только 2 самых новых resolved (recent 2 и recent 3).
 	var resolvedCount int64
 	if err := db.Model(&Incident{}).
 		Where("monitor_url_id = ? AND resolved_at IS NOT NULL", monitor.ID).
@@ -47,6 +50,7 @@ func TestPruneIncidentsAppliesRetentionAndPerMonitorLimit(t *testing.T) {
 		t.Fatalf("resolved incident count = %d, want 2", resolvedCount)
 	}
 
+	// Assert: open incident не трогается.
 	var openCount int64
 	if err := db.Model(&Incident{}).
 		Where("monitor_url_id = ? AND resolved_at IS NULL", monitor.ID).
@@ -57,6 +61,7 @@ func TestPruneIncidentsAppliesRetentionAndPerMonitorLimit(t *testing.T) {
 		t.Fatalf("open incident count = %d, want 1", openCount)
 	}
 
+	// Assert: сохранённые resolved — именно две последние по resolved_at.
 	var remaining []Incident
 	if err := db.Where("monitor_url_id = ? AND resolved_at IS NOT NULL", monitor.ID).
 		Order("resolved_at asc").
