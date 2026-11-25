@@ -1,0 +1,125 @@
+version: "3"
+
+vars:
+  GO_UPTIME_DATABASE_HOST: '{{.GO_UPTIME_DATABASE_HOST | default "127.0.0.1"}}'
+  GO_UPTIME_DATABASE_PORT: '{{.GO_UPTIME_DATABASE_PORT | default "5432"}}'
+  GO_UPTIME_DATABASE_USER: '{{.GO_UPTIME_DATABASE_USER | default "gouptime"}}'
+  GO_UPTIME_DATABASE_PASSWORD: '{{.GO_UPTIME_DATABASE_PASSWORD | default "change-me"}}'
+  GO_UPTIME_DATABASE_NAME: '{{.GO_UPTIME_DATABASE_NAME | default "gouptime"}}'
+
+tasks:
+  # Development environment with the app and PostgreSQL in Docker.
+  dev:docker:
+    desc: Build and run the development app and PostgreSQL
+    cmds:
+      - docker compose -f docker-compose.dev.yml up --build
+
+  dev:docker:up:
+    desc: Start the development app and PostgreSQL in the background
+    cmds:
+      - docker compose -f docker-compose.dev.yml up -d --build --wait
+
+  dev:docker:down:
+    desc: Stop the development app and PostgreSQL
+    cmds:
+      - docker compose -f docker-compose.dev.yml down
+
+  dev:docker:logs:
+    desc: Follow development app and PostgreSQL logs
+    cmds:
+      - docker compose -f docker-compose.dev.yml logs -f
+
+  dev:docker:db:migrate:
+    desc: Apply Goose migrations to the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec -T app go run . db-goose-migrate
+
+  dev:docker:users:create:
+    desc: Interactively create a user in the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec app go run . db-users-create
+
+  dev:docker:users:list:
+    desc: List users in the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec -T app go run . db-users-show
+
+  # Production app connected to PostgreSQL on the external infra network.
+  prod:docker:up:
+    desc: Build and start the production app on the shared infra network
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml up -d --build
+
+  prod:docker:down:
+    desc: Stop the production app on the shared infra network
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml down
+
+  prod:docker:logs:
+    desc: Follow production app logs
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml logs -f
+
+  prod:docker:db:migrate:
+    desc: Apply Goose migrations to the shared production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml run --rm --no-deps go-uptime ./go-uptime db-goose-migrate
+
+  prod:docker:users:create:
+    desc: Interactively create a user in the production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml exec go-uptime ./go-uptime db-users-create
+
+  prod:docker:users:list:
+    desc: List users in the production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml exec -T go-uptime ./go-uptime db-users-show
+
+  # Production app and PostgreSQL managed together by Compose.
+  prod:docker:with-infra:up:
+    desc: Build and start the app with its bundled PostgreSQL
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml up -d --build
+
+  prod:docker:with-infra:down:
+    desc: Stop the app and bundled PostgreSQL
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml down
+
+  prod:docker:with-infra:db:migrate:
+    desc: Apply Goose migrations to the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml run --rm --no-deps app ./go-uptime db-goose-migrate
+
+  prod:docker:with-infra:users:create:
+    desc: Interactively create a user in the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml exec app ./go-uptime db-users-create
+
+  prod:docker:with-infra:users:list:
+    desc: List users in the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml exec -T app ./go-uptime db-users-show
+
+  # Run the Go app directly against PostgreSQL on the local machine.
+  server:
+    desc: Run the HTTP server locally
+    env:
+      GO_UPTIME_DATABASE_HOST: '{{.GO_UPTIME_DATABASE_HOST}}'
+      GO_UPTIME_DATABASE_PORT: '{{.GO_UPTIME_DATABASE_PORT}}'
+      GO_UPTIME_DATABASE_USER: '{{.GO_UPTIME_DATABASE_USER}}'
+      GO_UPTIME_DATABASE_PASSWORD: '{{.GO_UPTIME_DATABASE_PASSWORD}}'
+      GO_UPTIME_DATABASE_NAME: '{{.GO_UPTIME_DATABASE_NAME}}'
+    cmds:
+      - go run . server
+
+  db:migrate:
+    desc: Apply Goose migrations using local PostgreSQL connection settings
+    env:
+      GO_UPTIME_DATABASE_HOST: '{{.GO_UPTIME_DATABASE_HOST}}'
+      GO_UPTIME_DATABASE_PORT: '{{.GO_UPTIME_DATABASE_PORT}}'
+      GO_UPTIME_DATABASE_USER: '{{.GO_UPTIME_DATABASE_USER}}'
+      GO_UPTIME_DATABASE_PASSWORD: '{{.GO_UPTIME_DATABASE_PASSWORD}}'
+      GO_UPTIME_DATABASE_NAME: '{{.GO_UPTIME_DATABASE_NAME}}'
+    cmds:
+      - go run . db-goose-migrate

@@ -11,6 +11,11 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      GIN_MODE: release
+      GO_UPTIME_ENVIRONMENT: production
+      GO_UPTIME_HTTP_PORT: 8080
+      GO_UPTIME_SESSION_SECURE: "true"
+      GO_UPTIME_ENABLE_PLAYWRIGHT_API: "false"
       GO_UPTIME_DATABASE_HOST: postgresql
       GO_UPTIME_DATABASE_PORT: 5432
     ports:

@@ -1,40 +1,69 @@
-# Full stack for local development, CI, and e2e tests.
+# Production stack with a persistent PostgreSQL database.
+# Configure the required GO_UPTIME_* values in .env before deploying.
+# Apply schema changes separately with:
+#   docker compose --env-file .env -f docker-compose.with-infra.yml run --rm --no-deps app ./go-uptime db-goose-migrate
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: go-uptime-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: gouptime
-      POSTGRES_PASSWORD: test-uptime-db
-      POSTGRES_DB: ${GO_UPTIME_DATABASE_NAME:-gouptime}
-    tmpfs:
-      - /var/lib/postgresql/data
+      POSTGRES_USER: ${GO_UPTIME_DATABASE_USER:?Set GO_UPTIME_DATABASE_USER in .env}
+      POSTGRES_PASSWORD: ${GO_UPTIME_DATABASE_PASSWORD:?Set GO_UPTIME_DATABASE_PASSWORD in .env}
+      POSTGRES_DB: ${GO_UPTIME_DATABASE_NAME:?Set GO_UPTIME_DATABASE_NAME in .env}
+    volumes:
+      - type: bind
+        source: ${GO_UPTIME_POSTGRES_VOLUME:-./v-postgres}
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: true
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gouptime -d ${GO_UPTIME_DATABASE_NAME:-gouptime}"]
-      interval: 2s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
-      retries: 15
+      retries: 5
+      start_period: 10s
+    networks:
+      - app
 
   app:
     build: .
-    container_name: go-uptime-app
+    restart: unless-stopped
+    init: true
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       GIN_MODE: release
-      GO_UPTIME_ENVIRONMENT: development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GO_UPTIME_ENVIRONMENT: production
       GO_UPTIME_HTTP_PORT: 8080
-      GO_UPTIME_SESSION_SECRET: ${GO_UPTIME_SESSION_SECRET:-test-session-secret}
+      GO_UPTIME_SESSION_SECRET: ${GO_UPTIME_SESSION_SECRET:?Set GO_UPTIME_SESSION_SECRET in .env}
+      GO_UPTIME_SESSION_SECURE: "true"
+      GO_UPTIME_INCIDENT_RETENTION_DAYS: ${GO_UPTIME_INCIDENT_RETENTION_DAYS:-90}
+      GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR: ${GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR:-100}
+      GO_UPTIME_CHECK_CONCURRENCY: ${GO_UPTIME_CHECK_CONCURRENCY:-150}
+      GO_UPTIME_ENABLE_PLAYWRIGHT_API: "false"
       GO_UPTIME_DATABASE_HOST: postgres
       GO_UPTIME_DATABASE_PORT: 5432
-      GO_UPTIME_DATABASE_NAME: ${GO_UPTIME_DATABASE_NAME:-gouptime}
-      GO_UPTIME_DATABASE_USER: gouptime
-      GO_UPTIME_DATABASE_PASSWORD: test-uptime-db
-      GO_UPTIME_ENABLE_PLAYWRIGHT_API: ${GO_UPTIME_ENABLE_PLAYWRIGHT_API:-false}
+      GO_UPTIME_DATABASE_USER: ${GO_UPTIME_DATABASE_USER:?Set GO_UPTIME_DATABASE_USER in .env}
+      GO_UPTIME_DATABASE_PASSWORD: ${GO_UPTIME_DATABASE_PASSWORD:?Set GO_UPTIME_DATABASE_PASSWORD in .env}
+      GO_UPTIME_DATABASE_NAME: ${GO_UPTIME_DATABASE_NAME:?Set GO_UPTIME_DATABASE_NAME in .env}
+      GO_UPTIME_DATABASE_SSLMODE: disable
     ports:
-      - "18081:8080"
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - "${GO_UPTIME_HTTP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge

@@ -1,0 +1,54 @@
+# Development stack with PostgreSQL and the Go application.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${GO_UPTIME_DATABASE_USER:-gouptime}
+      POSTGRES_PASSWORD: ${GO_UPTIME_DATABASE_PASSWORD:-change-me}
+      POSTGRES_DB: ${GO_UPTIME_DATABASE_NAME:-gouptime}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "${GO_UPTIME_DATABASE_FORWARD_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  app:
+    image: golang:1.25.7-alpine
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GO_UPTIME_ENVIRONMENT: development
+      GO_UPTIME_HTTP_PORT: 8080
+      GO_UPTIME_SESSION_SECRET: ${GO_UPTIME_SESSION_SECRET:-local-development-session-secret}
+      GO_UPTIME_SESSION_SECURE: ${GO_UPTIME_SESSION_SECURE:-false}
+      GO_UPTIME_INCIDENT_RETENTION_DAYS: ${GO_UPTIME_INCIDENT_RETENTION_DAYS:-90}
+      GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR: ${GO_UPTIME_MAX_RESOLVED_INCIDENTS_PER_MONITOR:-100}
+      GO_UPTIME_CHECK_CONCURRENCY: ${GO_UPTIME_CHECK_CONCURRENCY:-150}
+      GO_UPTIME_DATABASE_HOST: postgres
+      GO_UPTIME_DATABASE_PORT: 5432
+      GO_UPTIME_DATABASE_USER: ${GO_UPTIME_DATABASE_USER:-gouptime}
+      GO_UPTIME_DATABASE_PASSWORD: ${GO_UPTIME_DATABASE_PASSWORD:-change-me}
+      GO_UPTIME_DATABASE_NAME: ${GO_UPTIME_DATABASE_NAME:-gouptime}
+      GO_UPTIME_DATABASE_SSLMODE: disable
+      GO_UPTIME_ENABLE_PLAYWRIGHT_API: ${GO_UPTIME_ENABLE_PLAYWRIGHT_API:-false}
+      GIN_MODE: debug
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${GO_UPTIME_HTTP_FORWARD_PORT:-8080}:8080"
+    volumes:
+      - .:/workspace
+      - go-build-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    command: ["go", "run", ".", "server"]
+
+volumes:
+  postgres-data:
+  go-build-cache:
+  go-mod-cache:
