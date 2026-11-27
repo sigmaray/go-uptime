@@ -13,6 +13,8 @@ type UserRepository interface {
 	FindUserByUsername(username string) (*models.User, error)
 	// CreateUser creates a new user with a securely hashed password.
 	CreateUser(username, password string) (models.User, error)
+	// UpdatePassword hashes and stores a new password for the specified user.
+	UpdatePassword(userID uint, password string) error
 }
 
 // userRepository implements UserRepository using GORM.
@@ -53,4 +55,22 @@ func (r *userRepository) CreateUser(username, password string) (models.User, err
 	}
 
 	return user, nil
+}
+
+// UpdatePassword replaces the password hash for the user identified by userID.
+// userID is the database ID of the user whose password is changed.
+// password is the new plaintext password, which is hashed before storage.
+func (r *userRepository) UpdatePassword(userID uint, password string) error {
+	hash, err := models.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	result := r.db.Model(&models.User{}).Where("id = ?", userID).Update("password_hash", hash)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

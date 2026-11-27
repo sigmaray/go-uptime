@@ -39,6 +39,11 @@ tasks:
     cmds:
       - docker compose -f docker-compose.dev.yml exec app go run . db-users-create
 
+  dev:docker:users:edit:
+    desc: Interactively change a user's password in the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec app go run . db-users-edit
+
   dev:docker:users:list:
     desc: List users in the development database
     cmds:
@@ -70,6 +75,11 @@ tasks:
     cmds:
       - docker compose --env-file .env -f docker-compose.yml exec go-uptime ./go-uptime db-users-create
 
+  prod:docker:users:edit:
+    desc: Interactively change a user's password in the production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml exec go-uptime ./go-uptime db-users-edit
+
   prod:docker:users:list:
     desc: List users in the production database
     cmds:
@@ -95,6 +105,11 @@ tasks:
     desc: Interactively create a user in the bundled production database
     cmds:
       - docker compose --env-file .env -f docker-compose.with-infra.yml exec app ./go-uptime db-users-create
+
+  prod:docker:with-infra:users:edit:
+    desc: Interactively change a user's password in the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml exec app ./go-uptime db-users-edit
 
   prod:docker:with-infra:users:list:
     desc: List users in the bundled production database

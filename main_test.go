@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"go-uptime/models"
+
 	"github.com/creack/pty"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -166,6 +168,49 @@ func TestCLICommands(t *testing.T) {
 		stdout, _ := runCLI(t, envs, input, "db-users-create")
 		if !strings.Contains(stdout, "username=testcli") {
 			t.Fatalf("expected testcli created, got: %s", stdout)
+		}
+	})
+
+	t.Run("UsersEdit", func(t *testing.T) {
+		input := "testcli\nnewpassword123\nnewpassword123\n"
+		stdout, _ := runCLI(t, envs, input, "db-users-edit")
+		if !strings.Contains(stdout, "Found user: ") || !strings.Contains(stdout, "Updated password for user \"testcli\".") {
+			t.Fatalf("expected password update confirmation, got: %s", stdout)
+		}
+
+		db, err := sql.Open("postgres", fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s_cli sslmode=disable",
+			envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
+			envOr("GO_UPTIME_DATABASE_PORT", "5432"),
+			envOr("GO_UPTIME_DATABASE_USER", "postgres"),
+			envOr("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
+			getTestDBName(),
+		))
+		if err != nil {
+			t.Fatalf("connect to user test database: %v", err)
+		}
+		defer db.Close()
+
+		var hash string
+		if err := db.QueryRow("SELECT password_hash FROM users WHERE username = $1", "testcli").Scan(&hash); err != nil {
+			t.Fatalf("load updated password hash: %v", err)
+		}
+		if !models.CheckPassword(hash, "newpassword123") {
+			t.Fatal("stored password hash does not match the new password")
+		}
+	})
+
+	t.Run("UsersEditNotFound", func(t *testing.T) {
+		stdout, _ := runCLI(t, envs, "missinguser\n", "db-users-edit")
+		if !strings.Contains(stdout, `User "missinguser" not found.`) {
+			t.Fatalf("expected missing user message, got: %s", stdout)
+		}
+	})
+
+	t.Run("UsersEditPasswordMismatch", func(t *testing.T) {
+		stdout, _ := runCLI(t, envs, "testcli\nnewpassword456\notherpassword456\n", "db-users-edit")
+		if !strings.Contains(stdout, "Password was not changed:") {
+			t.Fatalf("expected mismatch message, got: %s", stdout)
 		}
 	})
 

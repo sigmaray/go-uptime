@@ -67,6 +67,40 @@ func UsersCreate(db *gorm.DB) {
 	fmt.Printf("Created user: id=%d username=%s\n", user.ID, user.Username)
 }
 
+// UsersEdit interactively changes an existing user's password.
+// db is the GORM database connection used to find the user and store the new password hash.
+func UsersEdit(db *gorm.DB) {
+	reader := bufio.NewReader(os.Stdin)
+	username := readLine(reader, "Login: ")
+
+	repo := repository.NewUserRepository(db)
+	user, err := repo.FindUserByUsername(username)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to find user")
+	}
+	if user == nil {
+		fmt.Printf("User %q not found.\n", username)
+		return
+	}
+	fmt.Printf("Found user: id=%d username=%s\n", user.ID, user.Username)
+
+	password := readPassword("New password: ")
+	confirm := readPassword("Confirm new password: ")
+	input := forms.UpdateUserInput{
+		Username:        user.Username,
+		Password:        password,
+		ConfirmPassword: confirm,
+	}
+	if err := input.Validate(); err != nil {
+		fmt.Printf("Password was not changed: %s\n", forms.FormatValidationError(err))
+		return
+	}
+	if err := repo.UpdatePassword(user.ID, password); err != nil {
+		log.Fatal().Err(err).Uint("user_id", user.ID).Msg("failed to update user password")
+	}
+	fmt.Printf("Updated password for user %q.\n", user.Username)
+}
+
 // UsersShow prints all users as a table.
 func UsersShow(db *gorm.DB) {
 	var users []models.User

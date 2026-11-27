@@ -67,6 +67,7 @@ func registerCommands() {
 	rootCmd.AddCommand(
 		serverCmd(),
 		dbUsersCreateCmd(),
+		dbUsersEditCmd(),
 		dbUsersSeedCmd(),
 		dbUsersDeleteAllCmd(),
 		dbUsersShowCmd(),
@@ -101,6 +102,16 @@ func dbUsersCreateCmd() *cobra.Command {
 		Short: "Create a user interactively",
 		Run: func(_ *cobra.Command, _ []string) {
 			cli.UsersCreate(connectDB())
+		},
+	}
+}
+
+func dbUsersEditCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "db-users-edit",
+		Short: "Change an existing user's password interactively",
+		Run: func(_ *cobra.Command, _ []string) {
+			cli.UsersEdit(connectDB())
 		},
 	}
 }

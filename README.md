@@ -111,6 +111,7 @@ go run . server                 # HTTP server + worker
 go run . db-goose-migrate       # Goose migrations (preferred)
 go run . db-gorm-migrate        # GORM AutoMigrate (helper)
 go run . db-users-create        # create a user interactively
+go run . db-users-edit          # change an existing user's password interactively
 go run . db-users-seed          # admin/admin
 go run . db-users-show
 go run . db-users-delete-all
