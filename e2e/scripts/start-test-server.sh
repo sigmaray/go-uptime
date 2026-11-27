@@ -12,7 +12,13 @@ fi
 export GO_UPTIME_ENABLE_PLAYWRIGHT_API=true
 export GO_UPTIME_ENVIRONMENT=development
 export GO_UPTIME_SESSION_SECRET=test-session-secret
+export GO_UPTIME_SESSION_SECURE=false
+export GO_UPTIME_ENVIRONMENT=development
+export GO_UPTIME_ENABLE_PLAYWRIGHT_API=true
+export GO_UPTIME_DATABASE_USER=go_uptime_test
+export GO_UPTIME_DATABASE_PASSWORD=e2e-test-database-password
 export GO_UPTIME_DATABASE_NAME="${GO_UPTIME_TEST_DATABASE_NAME}"
+export GO_UPTIME_HTTP_PORT=18081
 
 COMPOSE="docker compose -f docker-compose.with-infra.yml -p e2e-go-uptime"
 

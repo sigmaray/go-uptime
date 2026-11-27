@@ -3,6 +3,23 @@
 <p class="text-warning">Available only in development mode.</p>
 
 <div class="row g-4">
+    <div class="col-12">
+        <div class="card dev-tools__panel">
+            <div class="card-body">
+                <h3 class="h5 dev-tools__title">Monitor Controls</h3>
+                <p class="small text-muted">Pause or resume checks for every configured monitor.</p>
+                <div class="d-grid gap-2 d-sm-flex">
+                    <form action="/admin/tools/pause-all-monitors" method="POST" class="d-grid d-sm-block m-0">
+                        <button type="submit" class="btn btn-warning">Pause all monitors</button>
+                    </form>
+                    <form action="/admin/tools/resume-all-monitors" method="POST" class="d-grid d-sm-block m-0">
+                        <button type="submit" class="btn btn-success">Resume all monitors</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="col-lg-6">
         <div class="card dev-tools__panel">
             <div class="card-body">

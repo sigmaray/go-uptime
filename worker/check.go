@@ -92,7 +92,7 @@ func (w *MonitorWorker) claimDueMonitors(now time.Time, limit int) ([]models.Mon
 	var due []models.MonitorURL
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-			Where("next_check_at IS NULL OR next_check_at <= ?", now).
+			Where("active = ? AND (next_check_at IS NULL OR next_check_at <= ?)", true, now).
 			Order("next_check_at asc NULLS FIRST, id asc").
 			Limit(limit).
 			Find(&due).Error
@@ -234,14 +234,15 @@ func (w *MonitorWorker) checkMonitor(monitor models.MonitorURL) checkResult {
 	displayName := models.MonitorDisplayName(monitor)
 	result := urlcheck.Probe(ctx, w.client, monitor.URL)
 	elapsed := int(result.DurationMs)
+	skipUptimeInterval := monitor.LastCheckedAt != nil && monitor.NextCheckAt != nil && !monitor.NextCheckAt.After(*monitor.LastCheckedAt)
 
 	if !result.Up {
 		w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, false, result.ErrMsg)
-		return checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed)}
+		return checkResult{monitor: monitor, isUp: false, errMsg: result.ErrMsg, elapsed: intPtr(elapsed), skipUptimeInterval: skipUptimeInterval}
 	}
 
 	w.recordMonitorRequest(displayName, monitor.URL, result.StatusCode, result.DurationMs, true, "")
-	return checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed)}
+	return checkResult{monitor: monitor, isUp: true, errMsg: "", elapsed: intPtr(elapsed), skipUptimeInterval: skipUptimeInterval}
 }
 
 // recordMonitorRequest stores one probe outcome in the in-memory request log ring.

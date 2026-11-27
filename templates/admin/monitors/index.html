@@ -117,15 +117,34 @@
                         </span>
                     </div>
                 </td>
-                <td><span class="badge {{ monitorStatusClass .IsUp .LastCheckedAt }}">{{ monitorStatus .IsUp .LastCheckedAt }}</span></td>
+                <td>
+                    {{ if .Active }}
+                    <span class="badge {{ monitorStatusClass .IsUp .LastCheckedAt }}">{{ monitorStatus .IsUp .LastCheckedAt }}</span>
+                    {{ else }}
+                    <span class="badge text-bg-secondary">Paused</span>
+                    {{ end }}
+                </td>
                 <td>{{ if .LastCheckedAt }}{{ .LastCheckedAt.Format "2006-01-02 15:04:05" }}{{ else }}—{{ end }}</td>
                 <td class="small text-danger">{{ .LastError }}</td>
                 <td class="text-end">
-                    <a href="/admin/monitors/{{ .ID }}/edit?return_to={{ urlquery $.ReturnTo }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                    <form action="/admin/monitors/{{ .ID }}/delete" method="POST" class="d-inline" data-confirm-delete="Delete this monitor?">
-                        <input type="hidden" name="return_to" value="{{ $.ReturnTo }}">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                    </form>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="/admin/monitors/{{ .ID }}/edit?return_to={{ urlquery $.ReturnTo }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        {{ if .Active }}
+                        <form action="/admin/monitors/{{ .ID }}/pause" method="POST" class="d-grid d-md-block m-0">
+                            <input type="hidden" name="return_to" value="{{ $.ReturnTo }}">
+                            <button type="submit" class="btn btn-sm btn-outline-warning">Pause</button>
+                        </form>
+                        {{ else }}
+                        <form action="/admin/monitors/{{ .ID }}/resume" method="POST" class="d-grid d-md-block m-0">
+                            <input type="hidden" name="return_to" value="{{ $.ReturnTo }}">
+                            <button type="submit" class="btn btn-sm btn-outline-success">Resume</button>
+                        </form>
+                        {{ end }}
+                        <form action="/admin/monitors/{{ .ID }}/delete" method="POST" class="d-grid d-md-block m-0" data-confirm-delete="Delete this monitor?">
+                            <input type="hidden" name="return_to" value="{{ $.ReturnTo }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {{ else }}

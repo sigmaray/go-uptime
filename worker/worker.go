@@ -53,6 +53,9 @@ type checkResult struct {
 	errMsg string
 	// elapsed is the probe duration in milliseconds; nil when unknown.
 	elapsed *int
+	// skipUptimeInterval is true for the first check after resume, when its
+	// claimed schedule is at or before the last recorded check.
+	skipUptimeInterval bool
 	// persistAttempts counts how many times this result was re-queued after a failed flush.
 	persistAttempts int
 }

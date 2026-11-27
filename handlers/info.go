@@ -30,6 +30,7 @@ type monitorBacklog struct {
 	Total        int
 	DueWaiting   int
 	NeverChecked int
+	Paused       int
 	MostOverdue  overdueMonitorView
 }
 
@@ -307,9 +308,13 @@ func newUtilizationGauge(label string, value, capacity int) utilizationGauge {
 // buildFleetComposition counts monitors by current status for a stacked chart.
 // monitors is the full monitor list loaded for the info page.
 func buildFleetComposition(monitors []models.MonitorURL) compositionChart {
-	up, down, unknown := 0, 0, 0
+	up, down, unknown, paused := 0, 0, 0, 0
 	for i := range monitors {
 		monitor := monitors[i]
+		if !monitor.Active {
+			paused++
+			continue
+		}
 		if monitor.LastCheckedAt == nil {
 			unknown++
 			continue
@@ -327,19 +332,20 @@ func buildFleetComposition(monitors []models.MonitorURL) compositionChart {
 			newCompositionSegment("Up", up, total, "up"),
 			newCompositionSegment("Down", down, total, "down"),
 			newCompositionSegment("Unknown", unknown, total, "unknown"),
+			newCompositionSegment("Paused", paused, total, "paused"),
 		},
 	}
 }
 
 // buildBacklogComposition turns backlog counts into mutually exclusive segments.
 // backlog is the due/waiting summary already computed for the info page.
-// Never-checked monitors are always due, so "Due" here means previously checked and overdue.
+// Active never-checked monitors are due; paused monitors have their own segment.
 func buildBacklogComposition(backlog monitorBacklog) compositionChart {
 	dueChecked := backlog.DueWaiting - backlog.NeverChecked
 	if dueChecked < 0 {
 		dueChecked = 0
 	}
-	onSchedule := backlog.Total - backlog.DueWaiting
+	onSchedule := backlog.Total - backlog.DueWaiting - backlog.Paused
 	if onSchedule < 0 {
 		onSchedule = 0
 	}
@@ -349,6 +355,7 @@ func buildBacklogComposition(backlog monitorBacklog) compositionChart {
 			newCompositionSegment("Due", dueChecked, backlog.Total, "due"),
 			newCompositionSegment("Never checked", backlog.NeverChecked, backlog.Total, "never"),
 			newCompositionSegment("On schedule", onSchedule, backlog.Total, "schedule"),
+			newCompositionSegment("Paused", backlog.Paused, backlog.Total, "paused"),
 		},
 	}
 }
@@ -488,6 +495,10 @@ func computeMonitorBacklog(monitors []models.MonitorURL, globalIntervalSeconds i
 
 	for i := range monitors {
 		monitor := &monitors[i]
+		if !monitor.Active {
+			backlog.Paused++
+			continue
+		}
 		intervalSeconds := models.MonitorCheckIntervalSeconds(*monitor, globalIntervalSeconds)
 		interval := time.Duration(intervalSeconds) * time.Second
 

@@ -11,6 +11,8 @@ import (
 const (
 	flashSavedMessage   = "Saved successfully."
 	flashDeletedMessage = "Deleted successfully."
+	flashPausedMessage  = "Monitor paused."
+	flashResumedMessage = "Monitor resumed."
 )
 
 // setFlash stores a one-time message in the session for the next rendered page.

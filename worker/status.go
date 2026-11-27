@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // batchResultsLoop receives check results from the worker routines and batches them.
@@ -124,29 +125,37 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 		for _, res := range batch {
 			ids = append(ids, res.monitor.ID)
 		}
-		var existingIDs []uint
-		if err := tx.Model(&models.MonitorURL{}).Where("id IN ?", ids).Pluck("id", &existingIDs).Error; err != nil {
-			return fmt.Errorf("load existing monitors for batch: %w", err)
+		var currentMonitors []models.MonitorURL
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id IN ?", ids).
+			Order("id asc").
+			Find(&currentMonitors).Error; err != nil {
+			return fmt.Errorf("lock monitors for check result batch: %w", err)
 		}
-		if len(existingIDs) == 0 {
+		if len(currentMonitors) == 0 {
 			return fmt.Errorf("bulk update monitor statuses: none of %d monitors still exist", len(batch))
 		}
-		if len(existingIDs) != len(batch) {
-			exist := make(map[uint]struct{}, len(existingIDs))
-			for _, id := range existingIDs {
-				exist[id] = struct{}{}
+		currentByID := make(map[uint]models.MonitorURL, len(currentMonitors))
+		for _, monitor := range currentMonitors {
+			currentByID[monitor.ID] = monitor
+		}
+		filtered := make([]checkResult, 0, len(batch))
+		for _, res := range batch {
+			current, ok := currentByID[res.monitor.ID]
+			if !ok || !current.Active || current.URL != res.monitor.URL {
+				continue
 			}
-			filtered := make([]checkResult, 0, len(existingIDs))
-			for _, res := range batch {
-				if _, ok := exist[res.monitor.ID]; ok {
-					filtered = append(filtered, res)
-				}
-			}
-			log.Warn().
+			res.monitor = current
+			filtered = append(filtered, res)
+		}
+		if len(filtered) != len(batch) {
+			log.Debug().
 				Int("dropped", len(batch)-len(filtered)).
-				Int("remaining", len(filtered)).
-				Msg("dropping deleted monitors from check result batch")
-			batch = filtered
+				Msg("discarding results for deleted, paused, or changed monitors")
+		}
+		batch = filtered
+		if len(batch) == 0 {
+			return nil
 		}
 
 		checks := make([]models.MonitorCheck, 0, len(batch))
@@ -162,7 +171,11 @@ func (w *MonitorWorker) processBatch(batch []checkResult) error {
 				LastError:   res.errMsg,
 			})
 
-			if err := models.ApplyUptimeInterval(tx, res.monitor.ID, res.monitor.LastCheckedAt, now, res.isUp); err != nil {
+			previousCheck := res.monitor.LastCheckedAt
+			if res.skipUptimeInterval {
+				previousCheck = nil
+			}
+			if err := models.ApplyUptimeInterval(tx, res.monitor.ID, previousCheck, now, res.isUp); err != nil {
 				return fmt.Errorf("update uptime stats for monitor %d: %w", res.monitor.ID, err)
 			}
 

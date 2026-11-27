@@ -503,7 +503,13 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 	monitor.CheckIntervalSeconds = checkInterval
 	monitor.NotifyTelegram = input.NotifyTelegram
 	monitor.NotifySMTP = input.NotifySMTP
-	if err := h.DB.Save(&monitor).Error; err != nil {
+	if err := h.DB.Model(&monitor).Updates(map[string]interface{}{
+		"name":                   monitor.Name,
+		"url":                    monitor.URL,
+		"check_interval_seconds": checkInterval,
+		"notify_telegram":        monitor.NotifyTelegram,
+		"notify_smtp":            monitor.NotifySMTP,
+	}).Error; err != nil {
 		status := http.StatusInternalServerError
 		errMsg := "Failed to update monitor URL"
 		if models.IsUniqueViolation(err) {
@@ -525,6 +531,48 @@ func (h *Handler) UpdateMonitor(c *gin.Context) {
 
 	applog.AddEvent("monitor", fmt.Sprintf("Updated monitor %q (%s)", monitor.Name, monitor.URL))
 	redirectWithFlash(c, returnTo, flashSavedMessage)
+}
+
+// PauseMonitor stops scheduled checks for the selected monitor.
+// c contains the authenticated request and monitor ID path parameter.
+func (h *Handler) PauseMonitor(c *gin.Context) {
+	h.setMonitorActive(c, false)
+}
+
+// ResumeMonitor restarts scheduled checks for the selected monitor.
+// c contains the authenticated request and monitor ID path parameter.
+func (h *Handler) ResumeMonitor(c *gin.Context) {
+	h.setMonitorActive(c, true)
+}
+
+// setMonitorActive changes whether a monitor is scheduled for checks.
+// c contains the authenticated request and monitor ID path parameter.
+// active is true to resume checks and false to pause them.
+func (h *Handler) setMonitorActive(c *gin.Context, active bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	if err := monitorsvc.NewService(h.DB).SetActive(uint(id), active); err != nil {
+		if monitorsvc.IsNotFound(err) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		applog.AddError("failed to change monitor active state", err.Error())
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	var action, message string
+	if active {
+		action, message = "resumed", flashResumedMessage
+	} else {
+		action, message = "paused", flashPausedMessage
+	}
+	applog.AddEvent("monitor", fmt.Sprintf("%s monitor %d", action, id))
+	redirectWithFlash(c, monitorsListReturnURL(c), message)
 }
 
 // DeleteMonitor permanently removes a monitored URL and cascaded related rows.

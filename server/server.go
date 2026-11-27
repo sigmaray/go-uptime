@@ -87,6 +87,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		admin.GET("/monitors/:id", h.MonitorShowPage)
 		admin.GET("/monitors/:id/edit", h.EditMonitorPage)
 		admin.POST("/monitors/:id", h.UpdateMonitor)
+		admin.POST("/monitors/:id/pause", h.PauseMonitor)
+		admin.POST("/monitors/:id/resume", h.ResumeMonitor)
 		admin.POST("/monitors/:id/delete", h.DeleteMonitor)
 
 		admin.GET("/heartbeats", h.HeartbeatsList)
@@ -111,6 +113,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 			tools.POST("/clear-table", h.ToolsClearTable)
 			tools.POST("/execute-sql", h.ToolsExecuteSQL)
 			tools.POST("/seed-monitors", h.ToolsSeedMonitors)
+			tools.POST("/pause-all-monitors", h.ToolsPauseAllMonitors)
+			tools.POST("/resume-all-monitors", h.ToolsResumeAllMonitors)
 			tools.POST("/test-telegram", h.ToolsTestTelegram)
 			tools.POST("/test-smtp", h.ToolsTestSMTP)
 			tools.POST("/test-error", h.ToolsTestError)

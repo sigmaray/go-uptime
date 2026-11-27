@@ -1,8 +1,23 @@
 {{ define "admin/monitors/show.html" }}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-4">
     <h2 class="mb-0">{{ .DisplayName }}</h2>
-    <div class="d-flex gap-2">
+    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
         <a href="/admin/monitors/{{ .Monitor.ID }}/edit" class="btn btn-outline-secondary">Edit</a>
+        {{ if .Monitor.Active }}
+        <form action="/admin/monitors/{{ .Monitor.ID }}/pause" method="POST" class="d-grid d-md-block m-0">
+            <input type="hidden" name="return_to" value="/admin/monitors">
+            <button type="submit" class="btn btn-outline-warning">Pause</button>
+        </form>
+        {{ else }}
+        <form action="/admin/monitors/{{ .Monitor.ID }}/resume" method="POST" class="d-grid d-md-block m-0">
+            <input type="hidden" name="return_to" value="/admin/monitors">
+            <button type="submit" class="btn btn-outline-success">Resume</button>
+        </form>
+        {{ end }}
+        <form action="/admin/monitors/{{ .Monitor.ID }}/delete" method="POST" class="d-grid d-md-block m-0" data-confirm-delete="Delete this monitor?">
+            <input type="hidden" name="return_to" value="/admin/monitors">
+            <button type="submit" class="btn btn-outline-danger">Delete</button>
+        </form>
         <a href="/admin/monitors" class="btn btn-link">Back to Monitors</a>
     </div>
 </div>
@@ -15,9 +30,13 @@
 
             <dt class="col-sm-3">Status</dt>
             <dd class="col-sm-9">
+                {{ if .Monitor.Active }}
                 <span class="badge {{ monitorStatusClass .Monitor.IsUp .Monitor.LastCheckedAt }}">
                     {{ monitorStatus .Monitor.IsUp .Monitor.LastCheckedAt }}
                 </span>
+                {{ else }}
+                <span class="badge text-bg-secondary">Paused</span>
+                {{ end }}
             </dd>
 
             <dt class="col-sm-3">Last Check</dt>
@@ -156,4 +175,5 @@
     </div>
     {{ end }}
 </div>
+<script src="/static/js/confirm-delete.js"></script>
 {{ end }}

@@ -64,6 +64,8 @@ type infoDiagnosticsMonitors struct {
 	DueWaiting int `json:"due_waiting"`
 	// NeverChecked is how many monitors have never been probed.
 	NeverChecked int `json:"never_checked"`
+	// Paused is how many monitors are intentionally not scheduled for checks.
+	Paused int `json:"paused"`
 	// Fleet breaks monitors down by current status.
 	Fleet infoDiagnosticsFleet `json:"fleet"`
 	// MostOverdue is the worst overdue monitor, or null when none exist.
@@ -78,6 +80,8 @@ type infoDiagnosticsFleet struct {
 	Down int `json:"down"`
 	// Unknown is monitors that have never been checked.
 	Unknown int `json:"unknown"`
+	// Paused is monitors intentionally excluded from active fleet status.
+	Paused int `json:"paused"`
 }
 
 // infoDiagnosticsOverdue describes the single most overdue monitor for diagnostics.
@@ -199,6 +203,7 @@ func buildInfoDiagnostics(
 			Total:        backlog.Total,
 			DueWaiting:   backlog.DueWaiting,
 			NeverChecked: backlog.NeverChecked,
+			Paused:       backlog.Paused,
 			Fleet:        fleetCountsFromChart(fleet),
 			MostOverdue:  overdueFromView(backlog.MostOverdue),
 		},
@@ -233,6 +238,8 @@ func fleetCountsFromChart(chart compositionChart) infoDiagnosticsFleet {
 			out.Down = segment.Count
 		case "unknown":
 			out.Unknown = segment.Count
+		case "paused":
+			out.Paused = segment.Count
 		}
 	}
 	return out

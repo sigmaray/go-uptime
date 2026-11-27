@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go-uptime/config"
+	monitorsvc "go-uptime/internal/services/monitor"
 	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 
@@ -441,6 +442,135 @@ func TestClaimDueMonitorsRespectsLimit(t *testing.T) {
 	if len(remaining) != 1 {
 		t.Fatalf("remaining claimed %d, want 1", len(remaining))
 	}
+}
+
+// TestClaimDueMonitorsSkipsPaused verifies inactive monitors never enter a check wave.
+func TestClaimDueMonitorsSkipsPaused(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	pausedAt := time.Now().Add(-time.Minute)
+	monitors := []models.MonitorURL{
+		{Name: "active", URL: "https://active.example.com", Active: true},
+		{Name: "paused", URL: "https://paused.example.com", Active: true, NextCheckAt: &pausedAt},
+	}
+	if err := db.Create(&monitors).Error; err != nil {
+		t.Fatalf("create monitors: %v", err)
+	}
+	if err := db.Model(&models.MonitorURL{}).Where("id = ?", monitors[1].ID).Update("active", false).Error; err != nil {
+		t.Fatalf("pause monitor: %v", err)
+	}
+
+	w := New(db, &config.Config{CheckConcurrency: 1})
+	claimed, err := w.claimDueMonitors(time.Now(), w.claimWaveLimit())
+	if err != nil {
+		t.Fatalf("claimDueMonitors: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != monitors[0].ID {
+		t.Fatalf("claimed monitors = %+v, want only active monitor %d", claimed, monitors[0].ID)
+	}
+}
+
+// TestPauseResumeKeepsUptimeContinuousOnlyAcrossActivePeriods verifies pause boundaries and stale probes.
+func TestPauseResumeKeepsUptimeContinuousOnlyAcrossActivePeriods(t *testing.T) {
+	db := openWorkerTestDB(t)
+	resetWorkerTestTables(t, db)
+
+	up := true
+	lastCheckedAt := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Second)
+	monitor := models.MonitorURL{
+		Name:          "uptime pause",
+		URL:           "https://uptime-pause.example.com",
+		Active:        true,
+		IsUp:          &up,
+		LastCheckedAt: &lastCheckedAt,
+	}
+	if err := db.Create(&monitor).Error; err != nil {
+		t.Fatalf("create monitor: %v", err)
+	}
+	if err := db.Create(&models.MonitorCheck{MonitorURLID: monitor.ID, CheckedAt: lastCheckedAt, IsUp: true}).Error; err != nil {
+		t.Fatalf("create prior check: %v", err)
+	}
+
+	service := monitorsvc.NewService(db)
+	if err := service.SetActive(monitor.ID, false); err != nil {
+		t.Fatalf("pause monitor: %v", err)
+	}
+	pausedStats := totalMonitorUptimeSeconds(t, db, monitor.ID)
+	if pausedStats < 118 || pausedStats > 125 {
+		t.Fatalf("uptime seconds at pause = %d, want about 120", pausedStats)
+	}
+	var paused models.MonitorURL
+	if err := db.First(&paused, monitor.ID).Error; err != nil {
+		t.Fatalf("reload paused monitor: %v", err)
+	}
+	if paused.Active || paused.NextCheckAt != nil {
+		t.Fatalf("paused monitor state = %+v, want inactive without a scheduled check", paused)
+	}
+	if err := service.SetActive(monitor.ID, false); err != nil {
+		t.Fatalf("repeat pause: %v", err)
+	}
+	if got := totalMonitorUptimeSeconds(t, db, monitor.ID); got != pausedStats {
+		t.Fatalf("repeated pause changed uptime from %d to %d", pausedStats, got)
+	}
+
+	if err := service.SetActive(monitor.ID, true); err != nil {
+		t.Fatalf("resume monitor: %v", err)
+	}
+	resumedStats := totalMonitorUptimeSeconds(t, db, monitor.ID)
+	if resumedStats != pausedStats {
+		t.Fatalf("resume changed uptime from %d to %d before a check", pausedStats, resumedStats)
+	}
+	if err := db.First(&monitor, monitor.ID).Error; err != nil {
+		t.Fatalf("reload resumed monitor: %v", err)
+	}
+	if !monitor.Active || monitor.NextCheckAt == nil || monitor.NextCheckAt.After(*monitor.LastCheckedAt) {
+		t.Fatalf("resumed monitor state = %+v, want active with a due marker at last check", monitor)
+	}
+
+	w := New(db, &config.Config{CheckConcurrency: 1})
+	// A claimed check result is ignored while the monitor remains paused.
+	if err := service.SetActive(monitor.ID, false); err != nil {
+		t.Fatalf("pause monitor before stale result: %v", err)
+	}
+	if err := w.processBatch([]checkResult{{monitor: monitor, isUp: false, errMsg: "stale result"}}); err != nil {
+		t.Fatalf("discard result while paused: %v", err)
+	}
+	var checkCount int64
+	if err := db.Model(&models.MonitorCheck{}).Where("monitor_url_id = ?", monitor.ID).Count(&checkCount).Error; err != nil {
+		t.Fatalf("count checks after paused result: %v", err)
+	}
+	if checkCount != 1 {
+		t.Fatalf("check count after paused result = %d, want 1", checkCount)
+	}
+
+	if err := service.SetActive(monitor.ID, true); err != nil {
+		t.Fatalf("resume after stale result: %v", err)
+	}
+	if err := db.First(&monitor, monitor.ID).Error; err != nil {
+		t.Fatalf("reload resumed monitor: %v", err)
+	}
+	if err := w.processBatch([]checkResult{{monitor: monitor, isUp: true, skipUptimeInterval: true}}); err != nil {
+		t.Fatalf("process resumed check: %v", err)
+	}
+	updatedStats := totalMonitorUptimeSeconds(t, db, monitor.ID)
+	if updatedStats != resumedStats {
+		t.Fatalf("uptime added after resumed check = %d, want unchanged total %d", updatedStats, resumedStats)
+	}
+}
+
+// totalMonitorUptimeSeconds returns the total active seconds stored for one test monitor.
+// t identifies the test and db is the isolated PostgreSQL test connection.
+func totalMonitorUptimeSeconds(t *testing.T, db *gorm.DB, monitorID uint) int64 {
+	t.Helper()
+	var total int64
+	if err := db.Model(&models.StatMinutely{}).
+		Where("monitor_url_id = ?", monitorID).
+		Select("COALESCE(SUM(total_seconds), 0)").
+		Scan(&total).Error; err != nil {
+		t.Fatalf("sum uptime stats: %v", err)
+	}
+	return total
 }
 
 func TestProcessBatchReturnsErrorForMissingMonitor(t *testing.T) {

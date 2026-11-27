@@ -90,7 +90,7 @@
         <div class="card h-100" data-testid="info-backlog-composition">
             <div class="card-body">
                 <h3 class="h5">Backlog composition</h3>
-                <p class="text-muted small">Due, never checked, and on-schedule monitors.</p>
+                <p class="text-muted small">Due, never checked, on-schedule, and paused monitors.</p>
                 {{ if gt .BacklogComposition.Total 0 }}
                 <div class="info-composition progress" role="img" aria-label="Backlog composition">
                     {{ range .BacklogComposition.Segments }}

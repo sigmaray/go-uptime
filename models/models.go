@@ -19,11 +19,13 @@ type User struct {
 
 // MonitorURL is an HTTP/HTTPS resource to monitor.
 type MonitorURL struct {
-	ID                   uint `gorm:"primaryKey"`
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	Name                 string `gorm:"not null;default:''"`
-	URL                  string `gorm:"uniqueIndex;not null"`
+	ID        uint `gorm:"primaryKey"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string `gorm:"not null;default:''"`
+	URL       string `gorm:"uniqueIndex;not null"`
+	// Active controls whether the worker schedules checks for this monitor.
+	Active               bool `gorm:"not null;default:true"`
 	IsUp                 *bool
 	LastCheckedAt        *time.Time
 	NextCheckAt          *time.Time `gorm:"index"`

@@ -65,21 +65,25 @@ func TestComputeMonitorBacklog(t *testing.T) {
 	older := now.Add(-30 * time.Minute)
 
 	monitors := []models.MonitorURL{
-		{ID: 1, Name: "Fresh", URL: "https://fresh.example", LastCheckedAt: &recent, CheckIntervalSeconds: &interval},
-		{ID: 2, Name: "Never", URL: "https://never.example", CheckIntervalSeconds: &interval},
-		{ID: 3, Name: "Overdue", URL: "https://overdue.example", LastCheckedAt: &old, CheckIntervalSeconds: &interval},
-		{ID: 4, Name: "Oldest", URL: "https://oldest.example", LastCheckedAt: &older, CheckIntervalSeconds: &interval},
+		{ID: 1, Name: "Fresh", URL: "https://fresh.example", Active: true, LastCheckedAt: &recent, CheckIntervalSeconds: &interval},
+		{ID: 2, Name: "Never", URL: "https://never.example", Active: true, CheckIntervalSeconds: &interval},
+		{ID: 3, Name: "Overdue", URL: "https://overdue.example", Active: true, LastCheckedAt: &old, CheckIntervalSeconds: &interval},
+		{ID: 4, Name: "Oldest", URL: "https://oldest.example", Active: true, LastCheckedAt: &older, CheckIntervalSeconds: &interval},
+		{ID: 5, Name: "Paused", URL: "https://paused.example", Active: false, LastCheckedAt: &older, CheckIntervalSeconds: &interval},
 	}
 
 	got := computeMonitorBacklog(monitors, 60, now)
-	if got.Total != 4 {
-		t.Fatalf("Total = %d, want 4", got.Total)
+	if got.Total != 5 {
+		t.Fatalf("Total = %d, want 5", got.Total)
 	}
 	if got.DueWaiting != 3 {
 		t.Fatalf("DueWaiting = %d, want 3", got.DueWaiting)
 	}
 	if got.NeverChecked != 1 {
 		t.Fatalf("NeverChecked = %d, want 1", got.NeverChecked)
+	}
+	if got.Paused != 1 {
+		t.Fatalf("Paused = %d, want 1", got.Paused)
 	}
 	if !got.MostOverdue.HasOverdue || got.MostOverdue.Name != "Oldest" {
 		t.Fatalf("MostOverdue = %+v, want Oldest", got.MostOverdue)
@@ -143,14 +147,15 @@ func TestBuildFleetComposition(t *testing.T) {
 	up := true
 	down := false
 	monitors := []models.MonitorURL{
-		{LastCheckedAt: &now, IsUp: &up},
-		{LastCheckedAt: &now, IsUp: &up},
-		{LastCheckedAt: &now, IsUp: &down},
-		{},
+		{Active: true, LastCheckedAt: &now, IsUp: &up},
+		{Active: true, LastCheckedAt: &now, IsUp: &up},
+		{Active: true, LastCheckedAt: &now, IsUp: &down},
+		{Active: true},
+		{Active: false, LastCheckedAt: &now, IsUp: &down},
 	}
 	got := buildFleetComposition(monitors)
-	if got.Total != 4 {
-		t.Fatalf("Total = %d, want 4", got.Total)
+	if got.Total != 5 {
+		t.Fatalf("Total = %d, want 5", got.Total)
 	}
 	if got.Segments[0].Count != 2 || got.Segments[0].Modifier != "up" {
 		t.Fatalf("up segment = %+v", got.Segments[0])
@@ -161,8 +166,11 @@ func TestBuildFleetComposition(t *testing.T) {
 	if got.Segments[2].Count != 1 || got.Segments[2].Modifier != "unknown" {
 		t.Fatalf("unknown segment = %+v", got.Segments[2])
 	}
-	if got.Segments[0].Percent != 50 {
-		t.Fatalf("up percent = %d, want 50", got.Segments[0].Percent)
+	if got.Segments[3].Count != 1 || got.Segments[3].Modifier != "paused" {
+		t.Fatalf("paused segment = %+v", got.Segments[3])
+	}
+	if got.Segments[0].Percent != 40 {
+		t.Fatalf("up percent = %d, want 40", got.Segments[0].Percent)
 	}
 }
 
@@ -171,6 +179,7 @@ func TestBuildBacklogComposition(t *testing.T) {
 		Total:        5,
 		DueWaiting:   3,
 		NeverChecked: 1,
+		Paused:       1,
 	})
 	if got.Total != 5 {
 		t.Fatalf("Total = %d, want 5", got.Total)
@@ -181,8 +190,11 @@ func TestBuildBacklogComposition(t *testing.T) {
 	if got.Segments[1].Label != "Never checked" || got.Segments[1].Count != 1 {
 		t.Fatalf("never segment = %+v", got.Segments[1])
 	}
-	if got.Segments[2].Label != "On schedule" || got.Segments[2].Count != 2 {
+	if got.Segments[2].Label != "On schedule" || got.Segments[2].Count != 1 {
 		t.Fatalf("schedule segment = %+v", got.Segments[2])
+	}
+	if got.Segments[3].Label != "Paused" || got.Segments[3].Count != 1 {
+		t.Fatalf("paused segment = %+v", got.Segments[3])
 	}
 }
 

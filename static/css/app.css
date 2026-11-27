@@ -218,6 +218,8 @@
 
 .info-composition__segment--unknown,
 .info-composition__swatch--unknown,
+.info-composition__segment--paused,
+.info-composition__swatch--paused,
 .info-composition__segment--never,
 .info-composition__swatch--never {
     background-color: var(--info-color-muted);
