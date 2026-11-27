@@ -49,6 +49,16 @@ tasks:
     cmds:
       - docker compose -f docker-compose.dev.yml exec -T app go run . db-users-show
 
+  dev:docker:monitors:pause-all:
+    desc: Pause all monitors in the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec -T app go run . db-monitors-pause-all
+
+  dev:docker:monitors:resume-all:
+    desc: Resume all monitors in the development database
+    cmds:
+      - docker compose -f docker-compose.dev.yml exec -T app go run . db-monitors-resume-all
+
   # Production app connected to PostgreSQL on the external infra network.
   prod:docker:up:
     desc: Build and start the production app on the shared infra network
@@ -85,6 +95,16 @@ tasks:
     cmds:
       - docker compose --env-file .env -f docker-compose.yml exec -T go-uptime ./go-uptime db-users-show
 
+  prod:docker:monitors:pause-all:
+    desc: Pause all monitors in the production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml exec -T go-uptime ./go-uptime db-monitors-pause-all
+
+  prod:docker:monitors:resume-all:
+    desc: Resume all monitors in the production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.yml exec -T go-uptime ./go-uptime db-monitors-resume-all
+
   # Production app and PostgreSQL managed together by Compose.
   prod:docker:with-infra:up:
     desc: Build and start the app with its bundled PostgreSQL
@@ -115,6 +135,16 @@ tasks:
     desc: List users in the bundled production database
     cmds:
       - docker compose --env-file .env -f docker-compose.with-infra.yml exec -T app ./go-uptime db-users-show
+
+  prod:docker:with-infra:monitors:pause-all:
+    desc: Pause all monitors in the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml exec -T app ./go-uptime db-monitors-pause-all
+
+  prod:docker:with-infra:monitors:resume-all:
+    desc: Resume all monitors in the bundled production database
+    cmds:
+      - docker compose --env-file .env -f docker-compose.with-infra.yml exec -T app ./go-uptime db-monitors-resume-all
 
   # Run the Go app directly against PostgreSQL on the local machine.
   server:

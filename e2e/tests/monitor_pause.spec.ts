@@ -78,7 +78,6 @@ test('pauses and resumes a monitor without deleting it', async ({ page, request 
   });
   expect(state.rows[0][0]).toBe('true');
 
-  await page.goto('/admin/tools/');
   await page.getByRole('button', { name: 'Pause all monitors' }).click();
   await expect(page.getByText('Paused all monitors (1 changed).')).toBeVisible();
   state = await apiCall(request, 'sql', {

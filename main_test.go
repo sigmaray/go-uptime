@@ -140,12 +140,32 @@ func TestCLICommands(t *testing.T) {
 		if !strings.Contains(stdout, "db-users-create") {
 			t.Fatalf("expected help with commands, got: %s", stdout)
 		}
+		if !strings.Contains(stdout, "db-monitors-pause-all") || !strings.Contains(stdout, "db-monitors-resume-all") {
+			t.Fatalf("expected bulk monitor commands in help, got: %s", stdout)
+		}
 	})
 
 	t.Run("GooseMigrate", func(t *testing.T) {
 		_, stderr := runCLI(t, envs, "", "db-goose-migrate")
 		if strings.Contains(stderr, "fatal") {
 			t.Fatalf("migration failed: %s", stderr)
+		}
+	})
+
+	t.Run("MonitorsPauseAndResumeAll", func(t *testing.T) {
+		_, stderr := runCLI(t, envs, "", "db-execute-sql", "INSERT INTO monitor_urls (name, url, created_at, updated_at) VALUES ('CLI monitor', 'https://cli-monitor.example.com', NOW(), NOW())")
+		if strings.Contains(stderr, "fatal") {
+			t.Fatalf("monitor setup failed: %s", stderr)
+		}
+
+		stdout, stderr := runCLI(t, envs, "", "db-monitors-pause-all")
+		if strings.Contains(stderr, "fatal") || !strings.Contains(stdout, "Paused all monitors (1 changed).") {
+			t.Fatalf("expected all monitors to pause, stdout=%s stderr=%s", stdout, stderr)
+		}
+
+		stdout, stderr = runCLI(t, envs, "", "db-monitors-resume-all")
+		if strings.Contains(stderr, "fatal") || !strings.Contains(stdout, "Resumed all monitors (1 changed).") {
+			t.Fatalf("expected all monitors to resume, stdout=%s stderr=%s", stdout, stderr)
 		}
 	})
 

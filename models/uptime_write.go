@@ -42,6 +42,93 @@ func ApplyUptimeInterval(db *gorm.DB, monitorID uint, previousCheckedAt *time.Ti
 	return addUptimeDuration(db, monitorID, *previousCheckedAt, checkedAt, isUp)
 }
 
+// UptimeInterval describes one monitor's final active interval before a lifecycle change.
+type UptimeInterval struct {
+	// MonitorURLID identifies the monitor whose uptime statistics are updated.
+	MonitorURLID uint
+	// StartedAt is the timestamp of the monitor's most recent check.
+	StartedAt time.Time
+	// EndedAt is the timestamp at which the monitor is paused.
+	EndedAt time.Time
+	// IsUp is the last observed monitor state used for this interval.
+	IsUp bool
+}
+
+// ApplyUptimeIntervals adds many monitor intervals to uptime buckets using batched inserts.
+// db is the transaction handle used to persist all generated bucket updates.
+// intervals contains the last observed active interval for each monitor being paused.
+func ApplyUptimeIntervals(db *gorm.DB, intervals []UptimeInterval) error {
+	const batchSize = 500
+
+	minutely := make([]StatMinutely, 0, batchSize)
+	hourly := make([]StatHourly, 0, batchSize)
+	daily := make([]StatDaily, 0, batchSize)
+	flush := func() error {
+		if len(minutely) > 0 {
+			if err := upsertMinutelyBatch(db, minutely); err != nil {
+				return err
+			}
+			minutely = minutely[:0]
+		}
+		if len(hourly) > 0 {
+			if err := upsertHourlyBatch(db, hourly); err != nil {
+				return err
+			}
+			hourly = hourly[:0]
+		}
+		if len(daily) > 0 {
+			if err := upsertDailyBatch(db, daily); err != nil {
+				return err
+			}
+			daily = daily[:0]
+		}
+		return nil
+	}
+
+	for _, interval := range intervals {
+		if err := collectDurationBuckets(interval, uptimeGranularityMinutely, func(bucketAt time.Time, seconds int) error {
+			upSeconds := 0
+			if interval.IsUp {
+				upSeconds = seconds
+			}
+			minutely = append(minutely, StatMinutely{MonitorURLID: interval.MonitorURLID, BucketAt: bucketAt, UpSeconds: upSeconds, TotalSeconds: seconds})
+			if len(minutely) >= batchSize {
+				return flush()
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := collectDurationBuckets(interval, uptimeGranularityHourly, func(bucketAt time.Time, seconds int) error {
+			upSeconds := 0
+			if interval.IsUp {
+				upSeconds = seconds
+			}
+			hourly = append(hourly, StatHourly{MonitorURLID: interval.MonitorURLID, BucketAt: bucketAt, UpSeconds: upSeconds, TotalSeconds: seconds})
+			if len(hourly) >= batchSize {
+				return flush()
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := collectDurationBuckets(interval, uptimeGranularityDaily, func(bucketAt time.Time, seconds int) error {
+			upSeconds := 0
+			if interval.IsUp {
+				upSeconds = seconds
+			}
+			daily = append(daily, StatDaily{MonitorURLID: interval.MonitorURLID, BucketAt: bucketAt, UpSeconds: upSeconds, TotalSeconds: seconds})
+			if len(daily) >= batchSize {
+				return flush()
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	return flush()
+}
+
 // BackfillUptimeStats rebuilds uptime buckets from existing monitor check history.
 // db is the database handle used to clear and rewrite aggregated stats.
 func BackfillUptimeStats(db *gorm.DB) error {
@@ -110,34 +197,77 @@ func addUptimeDuration(db *gorm.DB, monitorID uint, start, end time.Time, isUp b
 }
 
 func addDurationToGranularity(db *gorm.DB, monitorID uint, start, end time.Time, isUp bool, granularity uptimeGranularity) error {
-	current := start
-	for current.Before(end) {
+	return collectDurationBuckets(UptimeInterval{MonitorURLID: monitorID, StartedAt: start, EndedAt: end, IsUp: isUp}, granularity, func(bucketAt time.Time, seconds int) error {
+		upSeconds := 0
+		if isUp {
+			upSeconds = seconds
+		}
+		return upsertUptimeBucket(db, monitorID, bucketAt, upSeconds, seconds, granularity)
+	})
+}
+
+// collectDurationBuckets sends each nonempty bucket segment of interval to add.
+// interval is the monitor time range being split into uptime buckets.
+// granularity selects minute, hour, or day boundaries.
+// add persists or collects a bucket and its duration in seconds.
+func collectDurationBuckets(interval UptimeInterval, granularity uptimeGranularity, add func(time.Time, int) error) error {
+	current := interval.StartedAt
+	for current.Before(interval.EndedAt) {
 		bucketStart := truncateToBucket(current, granularity)
 		bucketEnd := bucketStart.Add(bucketDuration(granularity))
-
-		segmentStart := current
-		if segmentStart.Before(bucketStart) {
-			segmentStart = bucketStart
-		}
-		segmentEnd := end
+		segmentEnd := interval.EndedAt
 		if segmentEnd.After(bucketEnd) {
 			segmentEnd = bucketEnd
 		}
 
-		seconds := int(segmentEnd.Sub(segmentStart).Seconds())
+		seconds := int(segmentEnd.Sub(current).Seconds())
 		if seconds > 0 {
-			upSeconds := 0
-			if isUp {
-				upSeconds = seconds
-			}
-			if err := upsertUptimeBucket(db, monitorID, bucketStart, upSeconds, seconds, granularity); err != nil {
+			if err := add(bucketStart, seconds); err != nil {
 				return err
 			}
 		}
-
 		current = bucketEnd
 	}
 	return nil
+}
+
+// upsertMinutelyBatch adds minute bucket deltas in one or more database statements.
+// db is the active transaction handle.
+// rows contains minute bucket deltas to add.
+func upsertMinutelyBatch(db *gorm.DB, rows []StatMinutely) error {
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "monitor_url_id"}, {Name: "bucket_at"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"up_seconds":    gorm.Expr("stat_minutely.up_seconds + EXCLUDED.up_seconds"),
+			"total_seconds": gorm.Expr("stat_minutely.total_seconds + EXCLUDED.total_seconds"),
+		}),
+	}).CreateInBatches(&rows, 500).Error
+}
+
+// upsertHourlyBatch adds hour bucket deltas in one or more database statements.
+// db is the active transaction handle.
+// rows contains hour bucket deltas to add.
+func upsertHourlyBatch(db *gorm.DB, rows []StatHourly) error {
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "monitor_url_id"}, {Name: "bucket_at"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"up_seconds":    gorm.Expr("stat_hourly.up_seconds + EXCLUDED.up_seconds"),
+			"total_seconds": gorm.Expr("stat_hourly.total_seconds + EXCLUDED.total_seconds"),
+		}),
+	}).CreateInBatches(&rows, 500).Error
+}
+
+// upsertDailyBatch adds day bucket deltas in one or more database statements.
+// db is the active transaction handle.
+// rows contains day bucket deltas to add.
+func upsertDailyBatch(db *gorm.DB, rows []StatDaily) error {
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "monitor_url_id"}, {Name: "bucket_at"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"up_seconds":    gorm.Expr("stat_daily.up_seconds + EXCLUDED.up_seconds"),
+			"total_seconds": gorm.Expr("stat_daily.total_seconds + EXCLUDED.total_seconds"),
+		}),
+	}).CreateInBatches(&rows, 500).Error
 }
 
 func upsertUptimeBucket(db *gorm.DB, monitorID uint, bucketAt time.Time, upSeconds, totalSeconds int, granularity uptimeGranularity) error {

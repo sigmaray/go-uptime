@@ -78,6 +78,8 @@ func registerCommands() {
 		dbDropAllTablesCmd(),
 		dbDropTableCmd(),
 		dbExecuteSQLCmd(),
+		dbMonitorsPauseAllCmd(),
+		dbMonitorsResumeAllCmd(),
 	)
 }
 
@@ -217,6 +219,28 @@ func dbExecuteSQLCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(_ *cobra.Command, args []string) {
 			cli.ExecuteSQL(connectDB(), cli.ReadSQLFromArgs(args))
+		},
+	}
+}
+
+// dbMonitorsPauseAllCmd builds the CLI command that pauses all monitor checks.
+func dbMonitorsPauseAllCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "db-monitors-pause-all",
+		Short: "Pause checks for all monitors",
+		Run: func(_ *cobra.Command, _ []string) {
+			cli.MonitorsPauseAll(connectDB())
+		},
+	}
+}
+
+// dbMonitorsResumeAllCmd builds the CLI command that resumes all monitor checks.
+func dbMonitorsResumeAllCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "db-monitors-resume-all",
+		Short: "Resume checks for all monitors",
+		Run: func(_ *cobra.Command, _ []string) {
+			cli.MonitorsResumeAll(connectDB())
 		},
 	}
 }

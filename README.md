@@ -115,6 +115,8 @@ go run . db-users-edit          # change an existing user's password interactive
 go run . db-users-seed          # admin/admin
 go run . db-users-show
 go run . db-users-delete-all
+go run . db-monitors-pause-all  # pause checks for every monitor
+go run . db-monitors-resume-all # resume checks for every monitor
 go run . db-clear-table [table]
 go run . db-clear-all-tables
 go run . db-drop-table [table]

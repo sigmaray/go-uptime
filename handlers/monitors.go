@@ -97,6 +97,45 @@ func (h *Handler) MonitorsList(c *gin.Context) {
 	}, PageOptions{Title: "Monitors", ActiveNav: "monitors"})
 }
 
+// PauseAllMonitors pauses every monitor through the authenticated admin interface.
+// c is the authenticated Gin request context.
+func (h *Handler) PauseAllMonitors(c *gin.Context) {
+	h.setAllMonitorsActive(c, false, "/admin/monitors")
+}
+
+// ResumeAllMonitors resumes every monitor through the authenticated admin interface.
+// c is the authenticated Gin request context.
+func (h *Handler) ResumeAllMonitors(c *gin.Context) {
+	h.setAllMonitorsActive(c, true, "/admin/monitors")
+}
+
+// setAllMonitorsActive changes all monitor states and reports the number changed.
+// c is the authenticated Gin request context.
+// active is true to resume all monitors and false to pause them.
+// returnTo is the admin page to show after the operation.
+func (h *Handler) setAllMonitorsActive(c *gin.Context, active bool, returnTo string) {
+	changed, err := monitorsvc.NewService(h.DB).SetAllActive(active)
+	if err != nil {
+		applog.AddError("failed to change all monitor active states", err.Error())
+		redirectWithFlash(c, returnTo, "Could not update monitors.")
+		return
+	}
+
+	var message string
+	if changed == 0 {
+		if active {
+			message = "All monitors are already resumed."
+		} else {
+			message = "All monitors are already paused."
+		}
+	} else if active {
+		message = fmt.Sprintf("Resumed all monitors (%d changed).", changed)
+	} else {
+		message = fmt.Sprintf("Paused all monitors (%d changed).", changed)
+	}
+	redirectWithFlash(c, returnTo, message)
+}
+
 // NewMonitorPage displays the URL creation form.
 func (h *Handler) NewMonitorPage(c *gin.Context) {
 	_, notifyData, err := h.monitorNotificationContext()

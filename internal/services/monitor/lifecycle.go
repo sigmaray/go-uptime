@@ -41,13 +41,38 @@ func (s *Service) SetAllActive(active bool) (int, error) {
 			return err
 		}
 
-		now := time.Now().UTC()
-		for _, monitor := range monitors {
-			if err := setMonitorActive(tx, monitor, active, now); err != nil {
+		if !active {
+			now := time.Now().UTC()
+			intervals := make([]models.UptimeInterval, 0, len(monitors))
+			for _, monitor := range monitors {
+				firstCheckAfterResume := monitor.LastCheckedAt != nil && monitor.NextCheckAt != nil && !monitor.NextCheckAt.After(*monitor.LastCheckedAt)
+				if firstCheckAfterResume || monitor.IsUp == nil || monitor.LastCheckedAt == nil {
+					continue
+				}
+				intervals = append(intervals, models.UptimeInterval{
+					MonitorURLID: monitor.ID,
+					StartedAt:    *monitor.LastCheckedAt,
+					EndedAt:      now,
+					IsUp:         *monitor.IsUp,
+				})
+			}
+			if err := models.ApplyUptimeIntervals(tx, intervals); err != nil {
 				return err
 			}
-			changed++
 		}
+
+		updates := map[string]interface{}{"active": active}
+		if active {
+			// Use each monitor's last observed check as a one-shot marker for resume.
+			updates["next_check_at"] = gorm.Expr("last_checked_at")
+		} else {
+			updates["next_check_at"] = nil
+		}
+		result := tx.Model(&models.MonitorURL{}).Where("active <> ?", active).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		changed = int(result.RowsAffected)
 		return nil
 	})
 	if err != nil {

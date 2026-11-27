@@ -9,7 +9,6 @@ import (
 	"go-uptime/database"
 	"go-uptime/internal/applog"
 	"go-uptime/internal/notify"
-	monitorsvc "go-uptime/internal/services/monitor"
 	"go-uptime/models"
 
 	"github.com/gin-gonic/gin"
@@ -115,39 +114,13 @@ func (h *Handler) ToolsSeedMonitors(c *gin.Context) {
 // ToolsPauseAllMonitors pauses every monitor from the development tools page.
 // c is the authenticated Gin request context.
 func (h *Handler) ToolsPauseAllMonitors(c *gin.Context) {
-	h.setAllMonitorsActive(c, false)
+	h.setAllMonitorsActive(c, false, "/admin/tools/")
 }
 
 // ToolsResumeAllMonitors resumes every monitor from the development tools page.
 // c is the authenticated Gin request context.
 func (h *Handler) ToolsResumeAllMonitors(c *gin.Context) {
-	h.setAllMonitorsActive(c, true)
-}
-
-// setAllMonitorsActive changes all monitor states and reports the number changed.
-// c is the authenticated Gin request context.
-// active is true to resume all monitors and false to pause them.
-func (h *Handler) setAllMonitorsActive(c *gin.Context, active bool) {
-	changed, err := monitorsvc.NewService(h.DB).SetAllActive(active)
-	if err != nil {
-		applog.AddError("failed to change all monitor active states", err.Error())
-		redirectWithFlash(c, "/admin/tools/", "Could not update monitors.")
-		return
-	}
-
-	var message string
-	if changed == 0 {
-		if active {
-			message = "All monitors are already resumed."
-		} else {
-			message = "All monitors are already paused."
-		}
-	} else if active {
-		message = fmt.Sprintf("Resumed all monitors (%d changed).", changed)
-	} else {
-		message = fmt.Sprintf("Paused all monitors (%d changed).", changed)
-	}
-	redirectWithFlash(c, "/admin/tools/", message)
+	h.setAllMonitorsActive(c, true, "/admin/tools/")
 }
 
 // ToolsTestTelegram sends a test Telegram notification (development only).

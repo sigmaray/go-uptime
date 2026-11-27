@@ -95,6 +95,51 @@ func TestEffectiveSince(t *testing.T) {
 	}
 }
 
+func TestApplyUptimeIntervalsWritesBucketDeltasInBatches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires database")
+	}
+	db := openTestDB(t)
+	resetUptimeStatTables(t, db)
+
+	start := time.Date(2026, 7, 4, 11, 59, 30, 0, time.UTC)
+	end := time.Date(2026, 7, 4, 12, 1, 0, 0, time.UTC)
+	monitor := MonitorURL{Name: "batch uptime", URL: "https://batch-uptime.example.com"}
+	if err := db.Create(&monitor).Error; err != nil {
+		t.Fatalf("create monitor: %v", err)
+	}
+	interval := UptimeInterval{MonitorURLID: monitor.ID, StartedAt: start, EndedAt: end, IsUp: true}
+	if err := ApplyUptimeIntervals(db, []UptimeInterval{interval}); err != nil {
+		t.Fatalf("ApplyUptimeIntervals: %v", err)
+	}
+
+	var minutes []StatMinutely
+	if err := db.Where("monitor_url_id = ?", monitor.ID).Order("bucket_at").Find(&minutes).Error; err != nil {
+		t.Fatalf("load minute buckets: %v", err)
+	}
+	if len(minutes) != 2 || minutes[0].TotalSeconds != 30 || minutes[1].TotalSeconds != 60 {
+		t.Fatalf("minute buckets = %+v, want 30s and 60s", minutes)
+	}
+
+	var hourly StatHourly
+	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&hourly).Error; err != nil {
+		t.Fatalf("load hourly bucket: %v", err)
+	}
+	if hourly.UpSeconds != 90 || hourly.TotalSeconds != 90 {
+		t.Fatalf("hourly bucket = %+v, want 90 up and total seconds", hourly)
+	}
+
+	if err := ApplyUptimeIntervals(db, []UptimeInterval{interval}); err != nil {
+		t.Fatalf("ApplyUptimeIntervals second call: %v", err)
+	}
+	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&hourly).Error; err != nil {
+		t.Fatalf("reload hourly bucket: %v", err)
+	}
+	if hourly.UpSeconds != 180 || hourly.TotalSeconds != 180 {
+		t.Fatalf("hourly bucket after second call = %+v, want 180 up and total seconds", hourly)
+	}
+}
+
 func TestBuildUptimeHistoryBarsSkipsPreCreationMinutes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires database")

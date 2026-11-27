@@ -1,7 +1,13 @@
 {{ define "admin/monitors/index.html" }}
 <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="mb-0">Monitors</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
+        <form action="/admin/monitors/pause-all" method="POST" class="m-0">
+            <button type="submit" class="btn btn-outline-warning">Pause all monitors</button>
+        </form>
+        <form action="/admin/monitors/resume-all" method="POST" class="m-0">
+            <button type="submit" class="btn btn-outline-success">Resume all monitors</button>
+        </form>
         <a href="/admin/monitors/bulk/new" class="btn btn-outline-primary">Add multiple URLs</a>
         <a href="/admin/monitors/new" class="btn btn-primary">Add URL</a>
     </div>

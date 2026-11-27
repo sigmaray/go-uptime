@@ -80,6 +80,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 		admin.POST("/users/:id/delete", h.DeleteUser)
 
 		admin.GET("/monitors", h.MonitorsList)
+		admin.POST("/monitors/pause-all", h.PauseAllMonitors)
+		admin.POST("/monitors/resume-all", h.ResumeAllMonitors)
 		admin.GET("/monitors/new", h.NewMonitorPage)
 		admin.POST("/monitors", h.CreateMonitor)
 		admin.GET("/monitors/bulk/new", h.BulkNewMonitorPage)
