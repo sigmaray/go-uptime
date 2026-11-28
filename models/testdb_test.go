@@ -21,6 +21,9 @@ func openTestDB(t *testing.T) *gorm.DB {
 	if dbName == "" {
 		t.Skip("GO_UPTIME_TEST_DATABASE_NAME is not set")
 	}
+	if err := testdb.ValidateTestDatabaseName(dbName, envOrDefault("GO_UPTIME_DATABASE_NAME", "gouptime")); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.DatabaseConfig{
 		Host:     envOrDefault("GO_UPTIME_DATABASE_HOST", "localhost"),

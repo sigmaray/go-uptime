@@ -140,12 +140,10 @@ make server
 
 ### Go
 
-Нужна отдельная тестовая БД (`GO_UPTIME_TEST_DATABASE_NAME`, по умолчанию `go-uptime-test`). Не используйте рабочую БД разработки.
+Тесты, которым нужна БД, запускаются только при заданной переменной `GO_UPTIME_TEST_DATABASE_NAME`. Укажите имя отдельной тестовой БД; если переменная не задана, такие тесты пропускаются. Не используйте БД разработки.
 
 ```sh
-make test
-# или
-go test ./...
+GO_UPTIME_TEST_DATABASE_NAME=go-uptime-test make test
 ```
 
 ### Playwright
@@ -154,7 +152,7 @@ go test ./...
 cd e2e
 npm ci
 npx playwright install --with-deps chromium
-npm test
+GO_UPTIME_TEST_DATABASE_NAME=go-uptime-e2e npm test
 ```
 
 Скрипт поднимает стек из `docker-compose.with-infra.yml` с включённым Playwright API и после тестов останавливает его.

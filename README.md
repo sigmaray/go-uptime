@@ -143,12 +143,10 @@ make server
 
 ### Go
 
-Use a separate test database (`GO_UPTIME_TEST_DATABASE_NAME`, default `go-uptime-test`). Do not point tests at the development database.
+Database-backed Go tests run only when `GO_UPTIME_TEST_DATABASE_NAME` is set. Set it to a dedicated test database name; tests skip those cases when it is unset. Never use the development database.
 
 ```sh
-make test
-# or
-go test ./...
+GO_UPTIME_TEST_DATABASE_NAME=go-uptime-test make test
 ```
 
 ### Playwright
@@ -157,7 +155,7 @@ go test ./...
 cd e2e
 npm ci
 npx playwright install --with-deps chromium
-npm test
+GO_UPTIME_TEST_DATABASE_NAME=go-uptime-e2e npm test
 ```
 
 The script starts the stack from `docker-compose.with-infra.yml` with the Playwright API enabled and tears it down afterward.

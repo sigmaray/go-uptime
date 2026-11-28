@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"go-uptime/config"
+	"go-uptime/internal/testdb"
 	"go-uptime/models"
 
 	"github.com/creack/pty"
@@ -128,6 +129,13 @@ func TestCLICommands(t *testing.T) {
 	_ = godotenv.Load()
 	if getTestDBName() == "" {
 		t.Skip("GO_UPTIME_TEST_DATABASE_NAME is not set")
+	}
+	appDBName := envOr("GO_UPTIME_DATABASE_NAME", "gouptime")
+	if err := testdb.ValidateTestDatabaseName(getTestDBName(), appDBName); err != nil {
+		t.Fatal(err)
+	}
+	if err := testdb.ValidateTestDatabaseName(getTestDBName()+"_cli", appDBName); err != nil {
+		t.Fatal(err)
 	}
 
 	setupTestDB(t)

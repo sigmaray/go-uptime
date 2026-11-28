@@ -2,13 +2,31 @@
 package testdb
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/pressly/goose/v3"
 	"gorm.io/gorm"
 )
+
+// ValidateTestDatabaseName rejects empty, application, and PostgreSQL system database names.
+// testName is the database name reserved for tests; applicationName is the configured application database.
+func ValidateTestDatabaseName(testName, applicationName string) error {
+	if strings.TrimSpace(testName) == "" {
+		return fmt.Errorf("GO_UPTIME_TEST_DATABASE_NAME must not be empty")
+	}
+	if strings.EqualFold(testName, applicationName) {
+		return fmt.Errorf("test database %q must be different from the application database", testName)
+	}
+	switch strings.ToLower(testName) {
+	case "postgres", "template0", "template1":
+		return fmt.Errorf("test database %q is a PostgreSQL system database", testName)
+	}
+	return nil
+}
 
 // ApplyMigrations applies the application's Goose migrations to the isolated test database.
 // It resets a legacy AutoMigrate schema so tests exercise the same schema as the application.

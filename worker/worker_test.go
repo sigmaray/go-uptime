@@ -812,6 +812,13 @@ func openWorkerTestDB(t *testing.T) *gorm.DB {
 	if dbName == "" {
 		t.Skip("GO_UPTIME_TEST_DATABASE_NAME is not set")
 	}
+	appDBName := workerEnvOrDefault("GO_UPTIME_DATABASE_NAME", "gouptime")
+	if err := testdb.ValidateTestDatabaseName(dbName, appDBName); err != nil {
+		t.Fatal(err)
+	}
+	if err := testdb.ValidateTestDatabaseName(dbName+"_worker", appDBName); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.DatabaseConfig{
 		Host:     workerEnvOrDefault("GO_UPTIME_DATABASE_HOST", "localhost"),
