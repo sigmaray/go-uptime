@@ -209,10 +209,14 @@ func TestCLICommands(t *testing.T) {
 		if err != nil {
 			t.Fatalf("connect to user test database: %v", err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Errorf("close user test database: %v", err)
+			}
+		}()
 
 		var hash string
-		if err := db.QueryRow("SELECT password_hash FROM users WHERE username = $1", "testcli").Scan(&hash); err != nil {
+		if err := db.QueryRowContext(context.Background(), "SELECT password_hash FROM users WHERE username = $1", "testcli").Scan(&hash); err != nil {
 			t.Fatalf("load updated password hash: %v", err)
 		}
 		if !models.CheckPassword(hash, "newpassword123") {
