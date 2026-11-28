@@ -496,7 +496,7 @@ test.describe('Dev tools', () => {
     await expect(page.getByText('Test error recorded. Open Errors to view it.')).toBeVisible();
 
     await page.goto('/admin/errors');
-    await expect(page.getByText('test error from dev tools')).toBeVisible();
-    await expect(page.getByText('manual trigger')).toBeVisible();
+    const errorRow = page.getByRole('row').filter({ hasText: 'test error from dev tools' }).last();
+    await expect(errorRow).toContainText('manual trigger');
   });
 });

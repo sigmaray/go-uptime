@@ -22,7 +22,7 @@
                 <td>{{ .Message }}</td>
                 <td class="small">
                     {{ if .Fields }}
-                    <code class="log-table__fields">{{ .Fields }}</code>
+                    <code class="log-table__fields">{{ printf "%s" .Fields }}</code>
                     {{ else }}
                     <span class="text-muted">—</span>
                     {{ end }}

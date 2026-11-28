@@ -121,22 +121,35 @@ func TestApplyUptimeIntervalsWritesBucketDeltasInBatches(t *testing.T) {
 		t.Fatalf("minute buckets = %+v, want 30s and 60s", minutes)
 	}
 
-	var hourly StatHourly
-	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&hourly).Error; err != nil {
-		t.Fatalf("load hourly bucket: %v", err)
+	var hourly []StatHourly
+	if err := db.Where("monitor_url_id = ?", monitor.ID).Order("bucket_at").Find(&hourly).Error; err != nil {
+		t.Fatalf("load hourly buckets: %v", err)
 	}
-	if hourly.UpSeconds != 90 || hourly.TotalSeconds != 90 {
-		t.Fatalf("hourly bucket = %+v, want 90 up and total seconds", hourly)
+	if len(hourly) != 2 || hourly[0].UpSeconds != 30 || hourly[0].TotalSeconds != 30 || hourly[1].UpSeconds != 60 || hourly[1].TotalSeconds != 60 {
+		t.Fatalf("hourly buckets = %+v, want 30s and 60s", hourly)
+	}
+	var daily StatDaily
+	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&daily).Error; err != nil {
+		t.Fatalf("load daily bucket: %v", err)
+	}
+	if daily.UpSeconds != 90 || daily.TotalSeconds != 90 {
+		t.Fatalf("daily bucket = %+v, want 90 up and total seconds", daily)
 	}
 
 	if err := ApplyUptimeIntervals(db, []UptimeInterval{interval}); err != nil {
 		t.Fatalf("ApplyUptimeIntervals second call: %v", err)
 	}
-	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&hourly).Error; err != nil {
-		t.Fatalf("reload hourly bucket: %v", err)
+	if err := db.Where("monitor_url_id = ?", monitor.ID).Order("bucket_at").Find(&hourly).Error; err != nil {
+		t.Fatalf("reload hourly buckets: %v", err)
 	}
-	if hourly.UpSeconds != 180 || hourly.TotalSeconds != 180 {
-		t.Fatalf("hourly bucket after second call = %+v, want 180 up and total seconds", hourly)
+	if len(hourly) != 2 || hourly[0].UpSeconds != 60 || hourly[0].TotalSeconds != 60 || hourly[1].UpSeconds != 120 || hourly[1].TotalSeconds != 120 {
+		t.Fatalf("hourly buckets after second call = %+v, want 60s and 120s", hourly)
+	}
+	if err := db.Where("monitor_url_id = ?", monitor.ID).First(&daily).Error; err != nil {
+		t.Fatalf("reload daily bucket: %v", err)
+	}
+	if daily.UpSeconds != 180 || daily.TotalSeconds != 180 {
+		t.Fatalf("daily bucket after second call = %+v, want 180 up and total seconds", daily)
 	}
 }
 
