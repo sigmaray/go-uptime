@@ -46,3 +46,13 @@ test.describe('Authentication', () => {
     await expect(page.getByText('Invalid username or password')).toBeVisible();
   });
 });
+
+test('Playwright SQL API binds query arguments', async ({ request }) => {
+  const result = await apiCall(request, 'sql', {
+    query: 'SELECT ?::text AS value',
+    args: ['bound value'],
+  });
+
+  expect(result.columns).toEqual(['value']);
+  expect(result.rows).toEqual([['bound value']]);
+});

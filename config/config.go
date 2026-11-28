@@ -3,6 +3,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
@@ -42,6 +44,23 @@ type DatabaseConfig struct {
 	Password string `envconfig:"GO_UPTIME_DATABASE_PASSWORD" required:"true"`
 	// SSLMode is the libpq sslmode value (disable, require, verify-full, etc.).
 	SSLMode string `envconfig:"GO_UPTIME_DATABASE_SSLMODE" default:"disable"`
+}
+
+// ConnectionURL returns a PostgreSQL URL with credentials and parameters escaped by net/url.
+// c contains the host, port, user, password, database name, and SSL mode to encode.
+func (c DatabaseConfig) ConnectionURL() string {
+	sslMode := c.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, c.Password),
+		Host:     net.JoinHostPort(c.Host, c.Port),
+		Path:     "/" + c.DBName,
+		RawQuery: url.Values{"sslmode": []string{sslMode}}.Encode(),
+	}).String()
 }
 
 // IsDevelopment returns true when the application runs in development mode.

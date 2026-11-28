@@ -37,7 +37,7 @@ func (h *Handler) PlaywrightExecuteSQL(c *gin.Context) {
 		return
 	}
 
-	columns, rows, affected, err := database.ExecuteSQL(h.DB, req.Query)
+	columns, rows, affected, err := database.ExecuteSQL(h.DB, req.Query, req.Args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -20,17 +20,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// DSN builds a PostgreSQL connection string from configuration.
+// DSN builds a PostgreSQL URL from configuration.
 // c holds host, port, credentials, database name, and SSL mode (defaults to disable when empty).
 func DSN(c config.DatabaseConfig) string {
-	sslMode := c.SSLMode
-	if sslMode == "" {
-		sslMode = "disable"
-	}
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.DBName, sslMode,
-	)
+	return c.ConnectionURL()
 }
 
 // Connect opens a PostgreSQL connection through GORM.
@@ -157,11 +150,14 @@ func DropAllTables(db *gorm.DB) error {
 	return nil
 }
 
-// ExecuteSQL runs arbitrary SQL and returns result rows for SELECT queries.
-func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, rowsAffected int64, err error) {
+// ExecuteSQL runs SQL with optional bind arguments and returns result rows for queries.
+// db is the GORM handle used to execute the query.
+// query is the SQL statement, which may contain placeholders supported by the PostgreSQL driver.
+// args are values bound to the query placeholders instead of interpolated into SQL text.
+func ExecuteSQL(db *gorm.DB, query string, args ...interface{}) (columns []string, rows [][]string, rowsAffected int64, err error) {
 	trimmed := strings.TrimSpace(strings.ToUpper(query))
 	if strings.HasPrefix(trimmed, "SELECT") || strings.HasPrefix(trimmed, "WITH") {
-		sqlRows, qerr := db.Raw(query).Rows()
+		sqlRows, qerr := db.Raw(query, args...).Rows()
 		if qerr != nil {
 			return nil, nil, 0, qerr
 		}
@@ -194,7 +190,7 @@ func ExecuteSQL(db *gorm.DB, query string) (columns []string, rows [][]string, r
 		return columns, rows, int64(len(rows)), sqlRows.Err()
 	}
 
-	result := db.Exec(query)
+	result := db.Exec(query, args...)
 	return nil, nil, result.RowsAffected, result.Error
 }
 

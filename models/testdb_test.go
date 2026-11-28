@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go-uptime/config"
+	"go-uptime/internal/testdb"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -31,17 +32,12 @@ func openTestDB(t *testing.T) *gorm.DB {
 
 	ensureTestDatabase(t, cfg)
 
-	db, err := gorm.Open(postgres.Open(fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName,
-	)), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.ConnectionURL()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
 
-	if err := migrateTestSchema(db); err != nil {
-		t.Fatalf("migrate test schema: %v", err)
-	}
+	testdb.ApplyMigrations(t, db)
 
 	return db
 }
@@ -52,10 +48,9 @@ func openTestDB(t *testing.T) *gorm.DB {
 func ensureTestDatabase(t *testing.T, cfg config.DatabaseConfig) {
 	t.Helper()
 
-	adminDB, err := gorm.Open(postgres.Open(fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password,
-	)), &gorm.Config{})
+	adminConfig := cfg
+	adminConfig.DBName = "postgres"
+	adminDB, err := gorm.Open(postgres.Open(adminConfig.ConnectionURL()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open postgres admin db: %v", err)
 	}
@@ -77,21 +72,6 @@ func ensureTestDatabase(t *testing.T, cfg config.DatabaseConfig) {
 	if err := adminDB.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, cfg.DBName)).Error; err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
-}
-
-// migrateTestSchema creates tables required by model tests.
-// db is the test database connection that receives AutoMigrate calls.
-func migrateTestSchema(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&User{},
-		&MonitorURL{},
-		&MonitorCheck{},
-		&Incident{},
-		&AppSetting{},
-		&StatMinutely{},
-		&StatHourly{},
-		&StatDaily{},
-	)
 }
 
 // resetUptimeStatTables truncates uptime-related tables for isolated test cases.

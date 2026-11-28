@@ -174,6 +174,8 @@ func Run(cfg *config.Config, migrations embed.FS) {
 	}
 }
 
+// setupLogger configures zerolog and captures application log entries for the admin UI.
+// level is the configured log level, or an invalid value that falls back to info.
 func setupLogger(level string) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	l, err := zerolog.ParseLevel(level)
@@ -188,6 +190,8 @@ func setupLogger(level string) {
 	).Level(l).With().Timestamp().Logger()
 }
 
+// loadHTMLTemplates parses the admin templates and attaches them to the Gin engine.
+// r is the Gin engine that renders the parsed templates.
 func loadHTMLTemplates(r *gin.Engine) *template.Template {
 	funcMap := template.FuncMap{
 		"monitorStatus":          monitorStatusLabel,

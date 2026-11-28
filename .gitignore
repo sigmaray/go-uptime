@@ -11,3 +11,5 @@ e2e/test-results/
 aiignore/
 .cursor/
 gitignore/
+v-postgres/
+.agents/

@@ -12,6 +12,7 @@ import (
 
 	"go-uptime/config"
 	monitorsvc "go-uptime/internal/services/monitor"
+	"go-uptime/internal/testdb"
 	"go-uptime/internal/urlcheck"
 	"go-uptime/models"
 
@@ -821,25 +822,11 @@ func openWorkerTestDB(t *testing.T) *gorm.DB {
 	}
 	ensureWorkerTestDatabase(t, cfg)
 
-	db, err := gorm.Open(postgres.Open(fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName,
-	)), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.ConnectionURL()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open worker test db: %v", err)
 	}
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.MonitorURL{},
-		&models.MonitorCheck{},
-		&models.Incident{},
-		&models.AppSetting{},
-		&models.StatMinutely{},
-		&models.StatHourly{},
-		&models.StatDaily{},
-	); err != nil {
-		t.Fatalf("migrate worker test schema: %v", err)
-	}
+	testdb.ApplyMigrations(t, db)
 	return db
 }
 
@@ -848,10 +835,9 @@ func openWorkerTestDB(t *testing.T) *gorm.DB {
 func ensureWorkerTestDatabase(t *testing.T, cfg config.DatabaseConfig) {
 	t.Helper()
 
-	adminDB, err := gorm.Open(postgres.Open(fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password,
-	)), &gorm.Config{})
+	adminConfig := cfg
+	adminConfig.DBName = "postgres"
+	adminDB, err := gorm.Open(postgres.Open(adminConfig.ConnectionURL()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open postgres admin db: %v", err)
 	}

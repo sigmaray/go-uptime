@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"go-uptime/config"
 	"go-uptime/models"
 
 	"github.com/creack/pty"
@@ -74,14 +75,7 @@ func envOr(key, fallback string) string {
 func setupTestDB(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
-		envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
-		envOr("GO_UPTIME_DATABASE_PORT", "5432"),
-		envOr("GO_UPTIME_DATABASE_USER", "postgres"),
-		envOr("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
-	)
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", testDatabaseConfig("postgres").ConnectionURL())
 	if err != nil {
 		t.Fatalf("connect postgres: %v", err)
 	}
@@ -99,14 +93,7 @@ func setupTestDB(t *testing.T) {
 func cleanupTestDB(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable",
-		envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
-		envOr("GO_UPTIME_DATABASE_PORT", "5432"),
-		envOr("GO_UPTIME_DATABASE_USER", "postgres"),
-		envOr("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
-	)
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", testDatabaseConfig("postgres").ConnectionURL())
 	if err != nil {
 		t.Errorf("connect postgres: %v", err)
 		return
@@ -121,6 +108,19 @@ func cleanupTestDB(t *testing.T) {
 	`, testDB))
 	if _, err := db.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS "%s"`, testDB)); err != nil {
 		t.Errorf("drop test db: %v", err)
+	}
+}
+
+// testDatabaseConfig builds connection settings for a database reserved for CLI tests.
+// dbName is the dedicated CLI test database or the PostgreSQL admin database.
+func testDatabaseConfig(dbName string) config.DatabaseConfig {
+	return config.DatabaseConfig{
+		Host:     envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
+		Port:     envOr("GO_UPTIME_DATABASE_PORT", "5432"),
+		User:     envOr("GO_UPTIME_DATABASE_USER", "postgres"),
+		Password: envOr("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
+		DBName:   dbName,
+		SSLMode:  "disable",
 	}
 }
 
@@ -198,14 +198,7 @@ func TestCLICommands(t *testing.T) {
 			t.Fatalf("expected password update confirmation, got: %s", stdout)
 		}
 
-		db, err := sql.Open("postgres", fmt.Sprintf(
-			"host=%s port=%s user=%s password=%s dbname=%s_cli sslmode=disable",
-			envOr("GO_UPTIME_DATABASE_HOST", "localhost"),
-			envOr("GO_UPTIME_DATABASE_PORT", "5432"),
-			envOr("GO_UPTIME_DATABASE_USER", "postgres"),
-			envOr("GO_UPTIME_DATABASE_PASSWORD", "postgres"),
-			getTestDBName(),
-		))
+		db, err := sql.Open("postgres", testDatabaseConfig(getTestDBName()+"_cli").ConnectionURL())
 		if err != nil {
 			t.Fatalf("connect to user test database: %v", err)
 		}
